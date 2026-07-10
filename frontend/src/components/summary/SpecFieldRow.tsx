@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useParams } from "next/navigation";
 
 import { getAllCitationTargets, getPrimaryCitationTarget } from "@/lib/citationTargets";
+import { copyToClipboard } from "@/lib/copyToClipboard";
 import { usePdfNavigation } from "@/lib/pdfNavigationContext";
 import { resolveFieldLabel, resolveFieldValue } from "@/lib/specFieldLabels";
 import type { SourceCitation, SummarySectionBlock } from "@/lib/types/intelligence";
@@ -39,12 +40,10 @@ function CopyValueButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(value);
+    const ok = await copyToClipboard(value);
+    if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* ignore */
     }
   }
 

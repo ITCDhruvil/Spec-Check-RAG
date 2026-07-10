@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { CitationPanel, CitationToggle } from "@/components/summary/SourceCitationList";
 import { MarkdownAssistantContent } from "@/components/chat/MarkdownAssistantContent";
+import { copyToClipboard } from "@/lib/copyToClipboard";
 import type { SourceCitation } from "@/lib/types/intelligence";
 
 function CopyIcon() {
@@ -26,12 +27,10 @@ export function AssistantMessageBubble({
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(content);
+    const ok = await copyToClipboard(content);
+    if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* ignore */
     }
   }
 

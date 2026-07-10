@@ -15,6 +15,7 @@ import {
 } from "@/lib/api/auth";
 import { useAuth } from "@/providers/auth-provider";
 import { patchUserInCache, prependUserInCache } from "@/lib/users-cache";
+import { copyToClipboard } from "@/lib/copyToClipboard";
 import type { CreateUserPayload, ManagedUser } from "@/lib/types/auth";
 
 function formatDate(value: string | null) {
@@ -115,6 +116,7 @@ function PasswordCell({
   onSetPassword?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
   const [visible, setVisible] = useState(false);
   if (!password?.trim()) {
     return (
@@ -131,9 +133,15 @@ function PasswordCell({
   const value = password.trim();
 
   async function copyPassword() {
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setCopyError(false);
+    const ok = await copyToClipboard(value);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      setCopyError(true);
+      setTimeout(() => setCopyError(false), 2000);
+    }
   }
 
   return (
@@ -153,8 +161,8 @@ function PasswordCell({
       <button
         type="button"
         onClick={copyPassword}
-        title={copied ? "Copied" : "Copy password"}
-        aria-label={copied ? "Copied" : "Copy password"}
+        title={copied ? "Copied" : copyError ? "Copy failed — select and copy manually" : "Copy password"}
+        aria-label={copied ? "Copied" : copyError ? "Copy failed" : "Copy password"}
         className="rounded border border-surface-border p-1 text-ink-muted hover:bg-surface-muted"
       >
         {copied ? <CheckIcon /> : <CopyIcon />}
