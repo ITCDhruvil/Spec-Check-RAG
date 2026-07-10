@@ -1,0 +1,462 @@
+{
+  "version": "1.0.0",
+  "description": "Golden set for offline spec-check eval (Phase 7). Regenerate with bootstrap_golden_manifest.py when outputs change intentionally.",
+  "thresholds": {
+    "min_docs_passing": 8,
+    "min_labeled_field_recall": 0.85,
+    "min_macro_f1": 0.8,
+    "min_field_recall": {
+      "bid_deadline_date_time": 0.95,
+      "project_name": 0.85,
+      "project_owner": 0.85
+    }
+  },
+  "documents": [
+    {
+      "id": "doc_20260216_175551_875c18ea_7413766_specs_20260",
+      "validation_json": "sample-docs/validation_results/doc_20260216_175551_875c18ea_7413766_specs_20260216042650_43.json",
+      "enabled": true,
+      "expect": {
+        "required_field_keys": [
+          "bid_deadline_date_time",
+          "project_name",
+          "project_owner",
+          "project_solicitation_number",
+          "bid_open_date_time"
+        ],
+        "min_row_count": 8,
+        "min_avg_confidence": 79,
+        "max_singleton_duplicates": 0,
+        "labeled_fields": {
+          "bid_deadline_date_time": {
+            "match": "contains_any",
+            "values": [
+              "days",
+              "after",
+              "posting",
+              "form"
+            ]
+          },
+          "project_name": {
+            "match": "contains_any",
+            "values": [
+              "Wi-Fi/Switch Upgrade and UPS Installation"
+            ]
+          },
+          "project_owner": {
+            "match": "contains_any",
+            "values": [
+              "Vanguard Academy"
+            ]
+          },
+          "project_solicitation_number": {
+            "match": "contains_any",
+            "values": [
+              "VAN 2026-01"
+            ]
+          },
+          "bid_open_date_time": {
+            "match": "contains_any",
+            "values": [
+              "days",
+              "after",
+              "posting",
+              "form"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "doc_20260216_181824_3cd182f4_7410235_specs_20260",
+      "validation_json": "sample-docs/validation_results/doc_20260216_181824_3cd182f4_7410235_specs_20260216061605_06.json",
+      "enabled": false,
+      "skip_pipeline_check": true,
+      "note": "pipeline_status=timeout",
+      "expect": {}
+    },
+    {
+      "id": "doc_20260217_090751_2e9d2172_7419759_specs_20260",
+      "validation_json": "sample-docs/validation_results/doc_20260217_090751_2e9d2172_7419759_specs_20260216121638_45.json",
+      "enabled": true,
+      "expect": {
+        "required_field_keys": [
+          "bid_deadline_date_time",
+          "project_name",
+          "project_owner",
+          "project_solicitation_number",
+          "question_deadline_date_time",
+          "bid_open_date_time"
+        ],
+        "min_row_count": 8,
+        "min_avg_confidence": 77,
+        "max_singleton_duplicates": 0,
+        "labeled_fields": {
+          "bid_deadline_date_time": {
+            "match": "contains_any",
+            "values": [
+              "February 26, 2026 at 12:00 PM EST"
+            ]
+          },
+          "project_name": {
+            "match": "contains_any",
+            "values": [
+              "MCAS Fence Repair Project Ordinance Point"
+            ]
+          },
+          "project_owner": {
+            "match": "contains_any",
+            "values": [
+              "Marine Corps Air Station Cherry Point, NC"
+            ]
+          },
+          "project_solicitation_number": {
+            "match": "contains_any",
+            "values": [
+              "N400857392298;",
+              "7392298;",
+              "NAVFAC",
+              "Solicitation"
+            ]
+          },
+          "question_deadline_date_time": {
+            "match": "contains_any",
+            "values": [
+              "February 23, 2026 at 12:00 PM EST"
+            ]
+          },
+          "bid_open_date_time": {
+            "match": "contains_any",
+            "values": [
+              "February 26, 2026 at 12:00 PM EST"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "doc_20260217_092638_0261eb9c_7419727_specs_20260",
+      "validation_json": "sample-docs/validation_results/doc_20260217_092638_0261eb9c_7419727_specs_20260216033617_e3.json",
+      "enabled": true,
+      "expect": {
+        "required_field_keys": [
+          "bid_deadline_date_time",
+          "project_name",
+          "project_owner",
+          "project_solicitation_number",
+          "question_deadline_date_time",
+          "bid_open_date_time"
+        ],
+        "min_row_count": 8,
+        "min_avg_confidence": 64,
+        "max_singleton_duplicates": 0,
+        "labeled_fields": {
+          "bid_deadline_date_time": {
+            "match": "contains_any",
+            "values": [
+              "March 4, 2026 at 1:00 PM CST"
+            ]
+          },
+          "project_name": {
+            "match": "contains_any",
+            "values": [
+              "WILSON\u2019S CREEK NATIONAL BATTLEFIELD"
+            ]
+          },
+          "project_owner": {
+            "match": "contains_any",
+            "values": [
+              "DOI - National Park Service"
+            ]
+          },
+          "project_solicitation_number": {
+            "match": "contains_any",
+            "values": [
+              "140P6026Q0008; 140P6026Q0006"
+            ]
+          },
+          "question_deadline_date_time": {
+            "match": "contains_any",
+            "values": [
+              "February 23, 2026 at 5:00 pm CST"
+            ]
+          },
+          "bid_open_date_time": {
+            "match": "contains_any",
+            "values": [
+              "March 4, 2026 at 1:00 PM CST"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "doc_20260217_093852_9efac7ea_7420226_specs_20260",
+      "validation_json": "sample-docs/validation_results/doc_20260217_093852_9efac7ea_7420226_specs_20260216061659_b5.json",
+      "enabled": true,
+      "expect": {
+        "required_field_keys": [
+          "bid_deadline_date_time",
+          "project_name",
+          "project_owner",
+          "project_solicitation_number",
+          "bid_open_date_time"
+        ],
+        "min_row_count": 9,
+        "min_avg_confidence": 73,
+        "max_singleton_duplicates": 0,
+        "labeled_fields": {
+          "bid_deadline_date_time": {
+            "match": "contains_any",
+            "values": [
+              "March 24, 2026 at 2:00 PM"
+            ]
+          },
+          "project_name": {
+            "match": "contains_any",
+            "values": [
+              "HOMEWOOD SCHOOLS RENOVATIONS"
+            ]
+          },
+          "project_owner": {
+            "match": "contains_any",
+            "values": [
+              "Homewood City Schools"
+            ]
+          },
+          "project_solicitation_number": {
+            "match": "contains_any",
+            "values": [
+              "null;",
+              "Project",
+              "No.:",
+              "ABHM250064;"
+            ]
+          },
+          "bid_open_date_time": {
+            "match": "contains_any",
+            "values": [
+              "March 24, 2026 at 2:00 PM"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "doc_20260217_102024_3f1f11ad_7417982_specs_20260",
+      "validation_json": "sample-docs/validation_results/doc_20260217_102024_3f1f11ad_7417982_specs_20260216123049_be.json",
+      "enabled": true,
+      "expect": {
+        "required_field_keys": [
+          "bid_deadline_date_time",
+          "project_name",
+          "project_owner",
+          "project_solicitation_number",
+          "bid_open_date_time"
+        ],
+        "min_row_count": 10,
+        "min_avg_confidence": 76,
+        "max_singleton_duplicates": 0,
+        "labeled_fields": {
+          "bid_deadline_date_time": {
+            "match": "contains_any",
+            "values": [
+              "March 24, 2026 at 10:00 AM"
+            ]
+          },
+          "project_name": {
+            "match": "contains_any",
+            "values": [
+              "HCD 2026 Vacant Unit Preparations Contract"
+            ]
+          },
+          "project_owner": {
+            "match": "contains_any",
+            "values": [
+              "MIAMI-DADE COUNTY, FLORIDA"
+            ]
+          },
+          "project_solicitation_number": {
+            "match": "contains_any",
+            "values": [
+              "RPQ No: 102248-HCD"
+            ]
+          },
+          "bid_open_date_time": {
+            "match": "contains_any",
+            "values": [
+              "March 24, 2026 at 10:00 AM"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "doc_20260217_134947_29a60743_7420628_specs_20260",
+      "validation_json": "sample-docs/validation_results/doc_20260217_134947_29a60743_7420628_specs_20260216180605_6b.json",
+      "enabled": true,
+      "expect": {
+        "required_field_keys": [
+          "bid_deadline_date_time",
+          "project_name",
+          "project_owner",
+          "project_solicitation_number",
+          "question_deadline_date_time",
+          "bid_open_date_time"
+        ],
+        "min_row_count": 8,
+        "min_avg_confidence": 75,
+        "max_singleton_duplicates": 0,
+        "labeled_fields": {
+          "bid_deadline_date_time": {
+            "match": "contains_any",
+            "values": [
+              "February 25, 2026 at 3:00 PM"
+            ]
+          },
+          "project_name": {
+            "match": "contains_any",
+            "values": [
+              "Boat Launch Dock Refurbishment Services"
+            ]
+          },
+          "project_owner": {
+            "match": "contains_any",
+            "values": [
+              "Allegan County"
+            ]
+          },
+          "project_solicitation_number": {
+            "match": "contains_any",
+            "values": [
+              "#1008",
+              "26A;",
+              "1008",
+              "26A;"
+            ]
+          },
+          "question_deadline_date_time": {
+            "match": "contains_any",
+            "values": [
+              "February 18, 2026 at 3:00 PM"
+            ]
+          },
+          "bid_open_date_time": {
+            "match": "contains_any",
+            "values": [
+              "February 25, 2026 at 3:00 PM"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "doc_20260224_154000_3e8ee04b_7417917_specs_20260",
+      "validation_json": "sample-docs/validation_results/doc_20260224_154000_3e8ee04b_7417917_specs_20260223235041_e0.json",
+      "enabled": true,
+      "expect": {
+        "required_field_keys": [
+          "bid_deadline_date_time",
+          "project_name",
+          "project_owner",
+          "project_solicitation_number",
+          "question_deadline_date_time",
+          "bid_open_date_time"
+        ],
+        "min_row_count": 9,
+        "min_avg_confidence": 64,
+        "max_singleton_duplicates": 0,
+        "labeled_fields": {
+          "bid_deadline_date_time": {
+            "match": "contains_any",
+            "values": [
+              "March 6, 2026 at 3:00 PM PST"
+            ]
+          },
+          "project_name": {
+            "match": "contains_any",
+            "values": [
+              "E-RATE Year 29 (2026-2027) REQUEST FOR PROPOSAL"
+            ]
+          },
+          "project_owner": {
+            "match": "contains_any",
+            "values": [
+              "Union Hill Elementary School District"
+            ]
+          },
+          "project_solicitation_number": {
+            "match": "contains_any",
+            "values": [
+              "#2026",
+              "#260019418;",
+              "#260019418;",
+              "#2026"
+            ]
+          },
+          "question_deadline_date_time": {
+            "match": "contains_any",
+            "values": [
+              "February 27, 2026 at 3:00 PM PST"
+            ]
+          },
+          "bid_open_date_time": {
+            "match": "contains_any",
+            "values": [
+              "March 6, 2026 at 3:00 PM PST"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "doc_20260224_154313_a8d448e2_7428476_specs_20260",
+      "validation_json": "sample-docs/validation_results/doc_20260224_154313_a8d448e2_7428476_specs_20260223172632_f8.json",
+      "enabled": true,
+      "expect": {
+        "required_field_keys": [
+          "bid_deadline_date_time",
+          "project_name",
+          "project_owner",
+          "project_solicitation_number",
+          "bid_open_date_time"
+        ],
+        "min_row_count": 10,
+        "min_avg_confidence": 74,
+        "max_singleton_duplicates": 0,
+        "labeled_fields": {
+          "bid_deadline_date_time": {
+            "match": "contains_any",
+            "values": [
+              "February 27, 2026 at 2:30 PM"
+            ]
+          },
+          "project_name": {
+            "match": "contains_any",
+            "values": [
+              "Fuel Tank Demolitions - ABTP & VIP"
+            ]
+          },
+          "project_owner": {
+            "match": "contains_any",
+            "values": [
+              "HRSD"
+            ]
+          },
+          "project_solicitation_number": {
+            "match": "contains_any",
+            "values": [
+              "Solicitation 407973-2; 407973-2"
+            ]
+          },
+          "bid_open_date_time": {
+            "match": "contains_any",
+            "values": [
+              "February 27, 2026 at 2:30 PM"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

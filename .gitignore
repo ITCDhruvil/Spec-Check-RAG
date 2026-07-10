@@ -1,0 +1,98 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Python tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.dmypy.json
+dmypy.json
+
+# Django
+*.sqlite3
+*.sqlite3-journal
+backend/staticfiles/
+celerybeat-schedule
+celerybeat.pid
+
+# Local data / uploads / vector store
+media/
+backend/media/
+chroma_data/
+backend/chroma_data/
+
+# Environment variables (keep examples)
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Node / Next.js
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+out/
+frontend/out/
+.turbo/
+*.tsbuildinfo
+
+# Frontend test / build artifacts
+coverage/
+frontend/coverage/
+.nyc_output/
+
+# Eval / generated reports
+backend/eval/out/
+backend/eval/out_*/
+sample-docs/validation_results/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Redis
+dump.rdb

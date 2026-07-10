@@ -1,0 +1,53 @@
+name: Spec-check eval
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+
+jobs:
+  golden-eval:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-django
+
+      - name: Unit tests (intelligence)
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.ci
+          CI: "true"
+        run: |
+          python -m pytest apps/intelligence/tests/test_field_confidence.py \
+            apps/intelligence/tests/test_spec_check_postrules.py \
+            apps/intelligence/tests/test_golden_set.py -v --tb=short
+
+      - name: Golden-set eval (Phase 7)
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.ci
+          CI: "true"
+        run: python eval/run_golden_eval.py --out eval/out/golden_report.json
+
+      - name: Upload golden eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-eval-report
+          path: |
+            backend/eval/out/golden_report.json
+            backend/eval/out/golden_report.md
