@@ -1,16 +1,29 @@
-# Spec Check — end-to-end local setup (Windows PowerShell)
+# Spec Check — end-to-end setup (Windows PowerShell)
 # Usage:
-#   .\setup.ps1
+#   .\setup.ps1                          Local setup (repo folder)
+#   .\setup.ps1 -Server                  Server setup (192.168.10.38:7004)
 #   .\setup.ps1 -AdminPassword "MySecurePass123"
+#   .\setup.ps1 -Server -AdminPassword "MySecurePass123"
 #   .\setup.ps1 -SkipFrontend
 
 param(
     [string]$AdminPassword = "",
-    [switch]$SkipFrontend
+    [switch]$SkipFrontend,
+    [switch]$Server
 )
 
+# Server deployment constants (LAN host at 192.168.10.38, app on port 7004)
+$ServerRoot = "C:\AI_Code\Spec_Check_RAG_V1_7004\Spec-Check-RAG"
+$ServerHost = "192.168.10.38"
+$ServerFrontendPort = "7004"
+$ServerBackendPort = "7005"
+
 $ErrorActionPreference = "Stop"
-$Root = $PSScriptRoot
+if ($Server) {
+    $Root = $ServerRoot
+} else {
+    $Root = $PSScriptRoot
+}
 $Backend = Join-Path $Root "backend"
 $Frontend = Join-Path $Root "frontend"
 $VenvPython = Join-Path $Backend "venv\Scripts\python.exe"
@@ -32,10 +45,50 @@ function Get-VersionNumber([string]$Text) {
     return 0
 }
 
+function Update-DotEnvValue {
+    param(
+        [string]$Path,
+        [string]$Key,
+        [string]$Value
+    )
+    if (-not (Test-Path $Path)) {
+        return
+    }
+    $lines = Get-Content $Path
+    $found = $false
+    $newLines = foreach ($line in $lines) {
+        if ($line -match "^$([regex]::Escape($Key))=") {
+            $found = $true
+            "$Key=$Value"
+        } else {
+            $line
+        }
+    }
+    if (-not $found) {
+        $newLines += "$Key=$Value"
+    }
+    $newLines | Set-Content -Path $Path -Encoding utf8
+}
+
 Write-Host ""
-Write-Host " Spec Check — project setup" -ForegroundColor Green
+if ($Server) {
+    Write-Host " Spec Check — SERVER setup" -ForegroundColor Green
+    Write-Host " Target:     http://${ServerHost}:${ServerFrontendPort}"
+    Write-Host " API:        http://${ServerHost}:${ServerBackendPort}/api/v1"
+} else {
+    Write-Host " Spec Check — LOCAL setup" -ForegroundColor Green
+}
 Write-Host " Repository: $Root"
 Write-Host ""
+
+if ($Server -and -not (Test-Path $Root)) {
+    Write-Host "ERROR: Server project path not found:" -ForegroundColor Red
+    Write-Host "  $Root"
+    Write-Host ""
+    Write-Host "Copy the project to that path on the server, then re-run:"
+    Write-Host "  setup.bat server"
+    exit 1
+}
 
 # ── Prerequisites ────────────────────────────────────────────────────────────
 Write-Step "Checking prerequisites"
@@ -134,6 +187,16 @@ if ($envContent -match "your_password|sk-your-key-here") {
     Write-Host "WARNING: backend/.env still has placeholder credentials." -ForegroundColor Yellow
 }
 
+if ($Server) {
+    Write-Step "Server network settings (backend/.env)"
+    $allowedHosts = "localhost,127.0.0.1,$ServerHost"
+    $corsOrigins = "http://localhost:$ServerFrontendPort,http://127.0.0.1:$ServerFrontendPort,http://${ServerHost}:$ServerFrontendPort"
+    Update-DotEnvValue -Path $EnvFile -Key "ALLOWED_HOSTS" -Value $allowedHosts
+    Update-DotEnvValue -Path $EnvFile -Key "CORS_ALLOWED_ORIGINS" -Value $corsOrigins
+    Write-Host "OK  ALLOWED_HOSTS=$allowedHosts"
+    Write-Host "OK  CORS_ALLOWED_ORIGINS=$corsOrigins"
+}
+
 # ── Database + migrations + admin ───────────────────────────────────────────
 Write-Step "Database, migrations, admin user"
 
@@ -171,13 +234,18 @@ if (-not $SkipFrontend) {
 
     Write-Step "Frontend environment file"
     $feEnv = Join-Path $Frontend ".env.local"
-    $backendPort = "8004"
-    $frontendPort = "3010"
+    if ($Server) {
+        $backendPort = $ServerBackendPort
+        $publicHost = $ServerHost
+    } else {
+        $backendPort = "8004"
+        $publicHost = "localhost"
+    }
     @"
-NEXT_PUBLIC_API_BASE_URL=http://localhost:$backendPort/api/v1
-NEXT_PUBLIC_API_HEALTH_URL=http://localhost:$backendPort/api/health/
+NEXT_PUBLIC_API_BASE_URL=http://${publicHost}:$backendPort/api/v1
+NEXT_PUBLIC_API_HEALTH_URL=http://${publicHost}:$backendPort/api/health/
 "@ | Set-Content -Path $feEnv -Encoding utf8
-    Write-Host "Wrote frontend/.env.local (API -> localhost:$backendPort)"
+    Write-Host "Wrote frontend/.env.local (API -> http://${publicHost}:$backendPort)"
 }
 
 # ── Done ─────────────────────────────────────────────────────────────────────
@@ -186,11 +254,23 @@ Write-Host " Setup complete!" -ForegroundColor Green
 Write-Host ""
 Write-Host " Next steps:"
 Write-Host "   1. Confirm backend/.env has valid DATABASE_URL and AI keys"
-Write-Host "   2. Start the app:  .\start.bat"
-Write-Host "   3. Open:           http://localhost:3010"
+if ($Server) {
+    Write-Host "   2. Start the app:  start.bat server"
+    Write-Host "   3. Open:           http://${ServerHost}:${ServerFrontendPort}"
+} else {
+    Write-Host "   2. Start the app:  .\start.bat"
+    Write-Host "   3. Open:           http://localhost:3010"
+}
 Write-Host "   4. Login:          admin@itcube.net (password printed above if newly created)"
 Write-Host ""
 Write-Host " Optional:"
 Write-Host "   - Redis: not required when PROCESSING_SYNC=True and INTELLIGENCE_SYNC_GENERATION=True"
 Write-Host "   - DOCX preview: install LibreOffice or set DOCX_PREVIEW_USE_WORD=True"
+if ($Server) {
+    Write-Host ""
+    Write-Host " Server ports:"
+    Write-Host "   - Frontend (LAN):  http://${ServerHost}:${ServerFrontendPort}"
+    Write-Host "   - Backend API:     http://${ServerHost}:${ServerBackendPort}/api/v1"
+    Write-Host "   - Project path:    $ServerRoot"
+}
 Write-Host ""
