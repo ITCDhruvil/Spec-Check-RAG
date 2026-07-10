@@ -227,7 +227,7 @@ function SetPasswordModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Set password"
+      title="Change password"
       description={user ? user.email : undefined}
     >
       <form onSubmit={handleSubmit} className="space-y-4 px-2 pb-2">
@@ -447,13 +447,6 @@ function UserRow({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["users"] }),
   });
 
-  const resetPassword = useMutation({
-    mutationFn: () => updateUser(user.id, { regenerate_password: true }),
-    onSuccess: (data) => {
-      patchUserInCache(queryClient, data);
-    },
-  });
-
   const removeUser = useMutation({
     mutationFn: () => deleteUser(user.id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["users"] }),
@@ -523,10 +516,10 @@ function UserRow({
           <button
             type="button"
             disabled={busy}
-            onClick={() => run(() => resetPassword.mutateAsync())}
+            onClick={() => onSetPassword(user)}
             className="rounded-md border border-surface-border px-2.5 py-1.5 text-xs font-medium hover:bg-surface-muted disabled:opacity-50"
           >
-            Reset password
+            Change password
           </button>
           <button
             type="button"
