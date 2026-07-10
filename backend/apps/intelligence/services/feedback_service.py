@@ -54,7 +54,9 @@ def process_feedback(
     )
 
     if rating == "down":
-        _update_lexicon_from_correction(extraction_type, correct_value, source_text_context)
+        _update_lexicon_from_correction(
+            extraction_type, field_key, correct_value, source_text_context
+        )
         _enqueue_threshold_check(extraction_type)
     else:
         _boost_positive(extraction_type)
@@ -68,6 +70,7 @@ def process_feedback(
 
 def _update_lexicon_from_correction(
     extraction_type: str,
+    field_key: str,
     correct_value: str,
     source_text: str,
 ) -> None:
@@ -79,6 +82,8 @@ def _update_lexicon_from_correction(
     from apps.intelligence.choices import LearnedEntryKind, LearnedTermSource
 
     candidates: list[str] = []
+    if field_key and correct_value and len(correct_value.strip()) >= 2:
+        candidates.append(f"{field_key}: {correct_value.strip()[:120]}")
     if correct_value and len(correct_value.strip()) >= 4:
         candidates.append(correct_value.strip()[:128])
     # Add first 80 chars of source context as a query hint.

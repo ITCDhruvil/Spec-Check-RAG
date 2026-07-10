@@ -1,5 +1,7 @@
 """Phase 6 post-rules tests."""
 
+from django.test import override_settings
+
 from apps.intelligence.services.spec_check_postrules import (
     _address_completeness_score,
     apply_spec_check_postrules,
@@ -76,7 +78,8 @@ def test_start_date_calculated_with_cst_bid_open():
         ],
         "project_metadata_items": [],
     }
-    finalize_spec_check_fields(spec)
+    with override_settings(INTELLIGENCE_INFER_PROJECT_DATES=True):
+        finalize_spec_check_fields(spec)
     start = next(d for d in spec["project_dates"] if d["text"] == "Project start date")
     assert start.get("_calculated") is True
     assert "April" in start["date"]
@@ -144,7 +147,8 @@ def test_placeholder_start_date_replaced_with_calculated():
         ],
         "project_metadata_items": [],
     }
-    finalize_spec_check_fields(spec)
+    with override_settings(INTELLIGENCE_INFER_PROJECT_DATES=True):
+        finalize_spec_check_fields(spec)
     start = next(d for d in spec["project_dates"] if d["text"] == "Project start date")
     assert "PENDING" not in start["date"].upper()
     assert start.get("_calculated") is True
@@ -261,6 +265,66 @@ def test_location_merge_keeps_distinct_sites():
     value = rows[0]["text"].split(": ", 1)[1]
     assert "100 Oak Street" in value
     assert "200 Elm Avenue" in value  # both distinct sites kept
+
+
+def test_rejects_null_solicitation_and_title_as_description():
+    spec = {
+        "project_metadata_items": [
+            {
+                "text": "Project name: HOMEWOOD SCHOOLS RENOVATIONS",
+                "field_key": "project_name",
+                "sources": [{"citation_verified": True}],
+            },
+            {
+                "text": "Project solicitation number: null",
+                "field_key": "project_solicitation_number",
+                "sources": [],
+            },
+            {
+                "text": "Project solicitation number: ABHM250064",
+                "field_key": "project_solicitation_number",
+                "sources": [{"citation_verified": True}],
+            },
+            {
+                "text": "Project description: HOMEWOOD SCHOOLS RENOVATIONS",
+                "field_key": "project_description",
+                "sources": [],
+            },
+            {
+                "text": "Project sector: Public",
+                "field_key": "project_sector",
+                "sources": [],
+            },
+        ],
+        "project_dates": [],
+    }
+    apply_spec_check_postrules(spec)
+    meta = spec["project_metadata_items"]
+    keys = {str(r.get("field_key")) for r in meta}
+    assert "project_solicitation_number" in keys
+    assert "project_description" not in keys
+    assert "project_sector" not in keys
+    sol = next(r for r in meta if r["field_key"] == "project_solicitation_number")
+    assert "ABHM250064" in sol["text"]
+    assert "null" not in sol["text"].lower()
+
+
+def test_accuracy_mode_drops_inferred_start_date():
+    spec = {
+        "project_dates": [
+            {
+                "text": "Bid open date",
+                "date": "March 4, 2026 at 1:00 PM CST",
+                "field_key": "bid_open_date_time",
+            },
+        ],
+        "project_metadata_items": [],
+    }
+    with override_settings(INTELLIGENCE_INFER_PROJECT_DATES=False):
+        finalize_spec_check_fields(spec)
+    assert not any(
+        str(d.get("field_key")) == "project_start_date_time" for d in spec["project_dates"]
+    )
 
 
 def test_location_merge_keeps_distinct_road_and_point_sites():

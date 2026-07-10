@@ -39,6 +39,14 @@ from apps.intelligence.services.model_routing import (
     model_for_tier,
     should_escalate_extraction,
 )
+from apps.intelligence.services.fast_mode import (
+    broad_extraction_chunks,
+    default_extraction_chunks,
+    extraction_batch_size,
+    fast_extraction_enabled,
+    group_extraction_enabled,
+    keyword_only_extraction,
+)
 from apps.intelligence.services.openai_service import OpenAIService
 
 logger = logging.getLogger(__name__)
@@ -54,7 +62,7 @@ _CHUNK_TRIM_CHARS = getattr(settings, "INTELLIGENCE_CHUNK_TRIM_CHARS", 3500)
 # How many chunks to group into a single LLM call (#6).
 # Default 3 → a 14-chunk type makes 5 calls instead of 14 (~65% fewer calls per type).
 # Set to 1 to disable batching and send one chunk per call (original behaviour).
-_EXTRACTION_BATCH_SIZE = getattr(settings, "INTELLIGENCE_EXTRACTION_BATCH_SIZE", 3)
+_EXTRACTION_BATCH_SIZE = extraction_batch_size()
 
 # Keyword hints for chunk routing (broad — indirect procurement language included)
 EXTRACTION_CHUNK_KEYWORDS: dict[str, list[str]] = {
@@ -454,16 +462,8 @@ class ExtractionService:
     @staticmethod
     def _max_chunks_for_type(extraction_type: str) -> int:
         if extraction_type in BROAD_COVERAGE_TYPES:
-            return getattr(
-                settings,
-                "INTELLIGENCE_BROAD_EXTRACTION_CHUNKS",
-                BROAD_MAX_CHUNKS,
-            )
-        return getattr(
-            settings,
-            "INTELLIGENCE_DEFAULT_EXTRACTION_CHUNKS",
-            DEFAULT_MAX_CHUNKS,
-        )
+            return broad_extraction_chunks()
+        return default_extraction_chunks()
 
     @staticmethod
     def _stratified_fill(
@@ -918,6 +918,17 @@ class ExtractionService:
         summary: GeneratedSummary,
         chunks: list[DocumentChunk],
     ) -> list[ExtractedInsight]:
+        if group_extraction_enabled():
+            from apps.intelligence.services.group_extraction_service import (
+                GroupExtractionService,
+            )
+
+            logger.info(
+                "extraction_mode=document_group_parallel document_id=%s",
+                document.id,
+            )
+            return GroupExtractionService.run_extractions(document, summary, chunks)
+
         parsed = document.parsed_document
         total_pages = parsed.total_pages
         page_texts = list(
@@ -929,34 +940,45 @@ class ExtractionService:
         focused_types = ExtractionService._focused_types_for_prompt_version()
         doc_id = str(document.id)
         cover_text = AdaptiveLexiconService.cover_sample_text(chunks, page_texts)
-        lexicon = AdaptiveLexiconService.build(chunks, page_texts)
-        # C1 — classify the document and route doc-type-specific retrieval queries.
-        classification = classify_document(cover_text)
-        doc_type_overrides = overrides_for_classification(classification)
-        logger.info(
-            "doc_type_classification document_id=%s detail=%s overrides=%s",
-            doc_id,
-            classification.to_debug_dict(),
-            {k: len(v) for k, v in doc_type_overrides.items()},
-        )
-        hybrid_by_type = ExtractionRetrievalService.scores_for_types(
-            doc_id,
-            focused_types,
-            lexicon=lexicon,
-            extra_queries_by_type=doc_type_overrides or None,
-        )
-        AdaptiveLexiconService.enrich_from_hybrid_feedback(lexicon, chunks, hybrid_by_type)
-        logger.info(
-            "adaptive_lexicon_ready document_id=%s detail=%s",
-            doc_id,
-            lexicon.to_debug_dict(),
-        )
+
+        if fast_extraction_enabled():
+            lexicon = DocumentAdaptiveLexicon()
+            hybrid_by_type: dict[str, dict[str, float]] = {}
+            logger.info(
+                "fast_extraction_mode document_id=%s keyword_only=true",
+                doc_id,
+            )
+        else:
+            lexicon = AdaptiveLexiconService.build(chunks, page_texts)
+            classification = classify_document(cover_text)
+            doc_type_overrides = overrides_for_classification(classification)
+            logger.info(
+                "doc_type_classification document_id=%s detail=%s overrides=%s",
+                doc_id,
+                classification.to_debug_dict(),
+                {k: len(v) for k, v in doc_type_overrides.items()},
+            )
+            hybrid_by_type = ExtractionRetrievalService.scores_for_types(
+                doc_id,
+                focused_types,
+                lexicon=lexicon,
+                extra_queries_by_type=doc_type_overrides or None,
+            )
+            AdaptiveLexiconService.enrich_from_hybrid_feedback(lexicon, chunks, hybrid_by_type)
+            logger.info(
+                "adaptive_lexicon_ready document_id=%s detail=%s",
+                doc_id,
+                lexicon.to_debug_dict(),
+            )
+
+        use_keyword_only = keyword_only_extraction()
         chunk_selection: dict[str, list[DocumentChunk]] = {
             etype: ExtractionService.select_chunks(
                 chunks,
                 etype,
                 hybrid_scores=hybrid_by_type.get(etype),
                 adaptive_terms=lexicon.terms_for(etype),
+                keyword_only=use_keyword_only,
             )
             for etype in focused_types
         }
@@ -1029,7 +1051,10 @@ class ExtractionService:
         finished = [results[etype] for etype in focused_types if etype in results]
 
         # ── Agentic field verifier: retry low-confidence / missing fields ─────
-        if getattr(settings, "INTELLIGENCE_AGENTIC_VERIFIER_ENABLED", True):
+        if (
+            getattr(settings, "INTELLIGENCE_AGENTIC_VERIFIER_ENABLED", True)
+            and not fast_extraction_enabled()
+        ):
             from apps.intelligence.services.agentic_field_verifier import (
                 run as agentic_verify,
             )

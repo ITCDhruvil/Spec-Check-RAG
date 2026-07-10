@@ -239,10 +239,38 @@ def _merge_rows_by_field_key(
     return others + [merged]
 
 
+def _get_project_name(rows: list[dict[str, Any]]) -> str:
+    for row in rows:
+        if str(row.get("field_key") or "") == "project_name":
+            return _row_display_value(row)
+    return ""
+
+
+def _normalize_title(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (text or "").strip().lower()).strip()
+
+
+def _is_valid_project_description(value: str, project_name: str) -> bool:
+    """Reject title-only or duplicate-of-name descriptions."""
+    val = (value or "").strip()
+    if not val or len(val) < 80:
+        return False
+    name_norm = _normalize_title(project_name)
+    val_norm = _normalize_title(val)
+    if name_norm and (val_norm == name_norm or val_norm in name_norm or name_norm in val_norm):
+        return False
+    # Real scope text usually has multiple sentences or many words.
+    words = val.split()
+    if len(words) < 15 and "." not in val and ";" not in val:
+        return False
+    return True
+
+
 def filter_invalid_metadata_rows(spec_check_fields: dict[str, Any]) -> None:
     items = spec_check_fields.get("project_metadata_items") or []
     if not isinstance(items, list):
         return
+    project_name = _get_project_name(items)
     kept: list[dict[str, Any]] = []
     for row in items:
         if not isinstance(row, dict):
@@ -254,7 +282,16 @@ def filter_invalid_metadata_rows(spec_check_fields: dict[str, Any]) -> None:
             continue
         if fk == "project_description":
             val = _row_display_value(row)
-            if val and len(val) >= 50:
+            if _is_valid_project_description(val, project_name):
+                kept.append(row)
+            continue
+        if fk == "project_sector":
+            # Only keep sector when citation is verified in source.
+            if _source_verified(row):
+                kept.append(row)
+            continue
+        if fk == "project_solicitation_number":
+            if _is_solicitation_number(_row_display_value(row)):
                 kept.append(row)
             continue
         kept.append(row)
@@ -272,18 +309,23 @@ def _is_solicitation_number(val: str) -> bool:
     v = val.strip()
     if not v:
         return False
-    # Reject plain English phrases (contain common English words, no code-like token)
+    lower = v.lower()
+    if lower in {"null", "none", "n/a", "na", "not stated", "not specified", "tbd"}:
+        return False
+    # Must contain a digit or a known procurement ID prefix (RFP, CIP, etc.)
+    if not re.search(r"\d", v) and not re.search(
+        r"\b(RFP|RFQ|IFB|CIP|ITB|RFS|NO\.|#)\b", v, re.IGNORECASE
+    ):
+        return False
     if not _SOLICITATION_NUMBER_PATTERN.search(v):
         return False
-    # Reject form field headers and generic procurement terms without a real code
-    lower = v.lower()
     reject_phrases = (
         "reference no. of document",
         "document being continued",
         "continuation sheet",
         "purchase request number",
         "requisition",
-        "advertisement #",   # timeline labels like "ADVERTISEMENT #1"
+        "advertisement #",
         "advertisement#",
     )
     return not any(p in lower for p in reject_phrases)

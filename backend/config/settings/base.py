@@ -115,6 +115,29 @@ INTELLIGENCE_SYNC_GENERATION = env.bool("INTELLIGENCE_SYNC_GENERATION", default=
 # False = Celery worker parses uploads; True = parse in background thread (dev/Windows)
 PROCESSING_SYNC = env.bool("PROCESSING_SYNC", default=False)
 
+# Fast extraction — skip RAG/indexing; keyword-only LLM extraction (much faster).
+# Ideal when you only need spec-check fields, not document chat.
+INTELLIGENCE_FAST_MODE = env.bool("INTELLIGENCE_FAST_MODE", default=False)
+INTELLIGENCE_GROUP_EXTRACTION = env.bool("INTELLIGENCE_GROUP_EXTRACTION", default=False)
+INTELLIGENCE_GROUP_EXTRACTION_MAX_CHARS = env.int("INTELLIGENCE_GROUP_EXTRACTION_MAX_CHARS", default=90_000)
+INTELLIGENCE_GROUP_EXTRACTION_WORKERS = env.int("INTELLIGENCE_GROUP_EXTRACTION_WORKERS", default=2)
+INTELLIGENCE_GROUP_EXTRACTION_STAGGER_MS = env.int("INTELLIGENCE_GROUP_EXTRACTION_STAGGER_MS", default=500)
+INTELLIGENCE_GROUP_EXTRACTION_RETRIES = env.int("INTELLIGENCE_GROUP_EXTRACTION_RETRIES", default=3)
+# Inject recent user corrections into group-extraction prompts (fast learning loop).
+INTELLIGENCE_FEEDBACK_HINTS_ENABLED = env.bool("INTELLIGENCE_FEEDBACK_HINTS_ENABLED", default=True)
+# When False, do not invent project start/end dates from bid dates (100% source-only dates).
+INTELLIGENCE_INFER_PROJECT_DATES = env.bool("INTELLIGENCE_INFER_PROJECT_DATES", default=False)
+# Gap between sequential critical group LLM calls (ms) — avoids Azure 429.
+INTELLIGENCE_GROUP_EXTRACTION_CRITICAL_GAP_MS = env.int(
+    "INTELLIGENCE_GROUP_EXTRACTION_CRITICAL_GAP_MS", default=1500
+)
+INTELLIGENCE_SKIP_INDEXING_ON_PARSE = env.bool("INTELLIGENCE_SKIP_INDEXING_ON_PARSE", default=False)
+INTELLIGENCE_SKIP_EMBEDDING = env.bool("INTELLIGENCE_SKIP_EMBEDDING", default=False)
+INTELLIGENCE_FAST_DEFAULT_CHUNKS = env.int("INTELLIGENCE_FAST_DEFAULT_CHUNKS", default=6)
+INTELLIGENCE_FAST_BROAD_CHUNKS = env.int("INTELLIGENCE_FAST_BROAD_CHUNKS", default=8)
+INTELLIGENCE_FAST_BATCH_SIZE = env.int("INTELLIGENCE_FAST_BATCH_SIZE", default=5)
+DOCX_PREVIEW_DEFER = env.bool("DOCX_PREVIEW_DEFER", default=False)
+
 # Phase 4 — Document-scoped RAG chat (Chroma)
 CHROMA_PERSIST_DIR = Path(
     env("CHROMA_PERSIST_DIR", default=str(BASE_DIR / "chroma_data"))

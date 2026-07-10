@@ -72,7 +72,9 @@ class DocumentService:
 
         try:
             with destination.open("wb") as dest:
+                digest = hashlib.sha256()
                 for chunk in file.chunks():
+                    digest.update(chunk)
                     dest.write(chunk)
         except OSError as exc:
             logger.exception("file_write_failed name=%s", stored_name)
@@ -83,7 +85,7 @@ class DocumentService:
             ) from exc
 
         mime_type = validate_mime_type(destination, extension)
-        checksum = DocumentService._compute_checksum(destination)
+        checksum = digest.hexdigest()
         relative_path = str(destination.relative_to(upload_dir.parent))
 
         with transaction.atomic():

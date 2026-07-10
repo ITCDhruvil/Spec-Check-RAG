@@ -137,6 +137,10 @@ def overrides_for_classification(classification) -> dict[str, list[str]]:
 
 
 def hybrid_retrieval_enabled() -> bool:
+    from apps.intelligence.services.fast_mode import keyword_only_extraction
+
+    if keyword_only_extraction():
+        return False
     return bool(getattr(settings, "INTELLIGENCE_HYBRID_RETRIEVAL_ENABLED", True))
 
 

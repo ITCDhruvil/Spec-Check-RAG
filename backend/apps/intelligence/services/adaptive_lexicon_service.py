@@ -68,12 +68,20 @@ def adaptive_lexicon_enabled() -> bool:
 
 
 def adaptive_llm_enabled() -> bool:
+    from apps.intelligence.services.fast_mode import fast_extraction_enabled
+
+    if fast_extraction_enabled():
+        return False
     return adaptive_lexicon_enabled() and bool(
         getattr(settings, "INTELLIGENCE_ADAPTIVE_LEXICON_LLM", True)
     )
 
 
 def adaptive_retry_enabled() -> bool:
+    from apps.intelligence.services.fast_mode import fast_extraction_enabled
+
+    if fast_extraction_enabled():
+        return False
     return adaptive_lexicon_enabled() and bool(
         getattr(settings, "INTELLIGENCE_ADAPTIVE_RETRY_ON_EMPTY", True)
     )

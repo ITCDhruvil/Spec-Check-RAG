@@ -88,6 +88,16 @@ class DocumentPipelineService:
     @staticmethod
     def run_chunking_and_indexing(job: ProcessingJob) -> dict:
         """Phase 2+3: build chunks and index embeddings after parse (RAG-ready before summary)."""
+        from apps.intelligence.services.fast_mode import skip_indexing_on_parse
+
+        if skip_indexing_on_parse():
+            logger.info(
+                "chunking_indexing_skipped job_id=%s document_id=%s reason=fast_mode",
+                job.id,
+                job.document_id,
+            )
+            return {"skipped": True, "reason": "fast_extraction_mode"}
+
         from apps.chat.services.index_service import VectorIndexService
         from apps.intelligence.services.chunking_service import ChunkingService
 

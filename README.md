@@ -76,9 +76,37 @@ Prompts and extraction types still use **RFQ procurement** structure internally 
 
 ## Quick start (local dev)
 
-### 1. Database
+### Automated setup (recommended)
 
-Create a PostgreSQL database (name must match `DATABASE_URL` in `backend/.env`):
+From the project root on Windows:
+
+```powershell
+.\setup.bat
+```
+
+Or directly:
+
+```powershell
+.\setup.ps1
+.\setup.ps1 -AdminPassword "YourSecurePass123"
+```
+
+This will:
+
+1. Check Python 3.11+ and Node.js 18+
+2. Create `backend/venv` and install `requirements.txt`
+3. Copy `backend/.env.example` → `backend/.env` (if missing)
+4. Create the PostgreSQL database (when credentials allow)
+5. Run `migrate` and `ensure_admin_user`
+6. Install frontend dependencies and write `frontend/.env.local`
+
+Then start the app with `.\start.bat`.
+
+**Before processing documents**, edit `backend/.env` with your real `DATABASE_URL` and `OPENAI_API_KEY` (or Azure settings).
+
+### Manual setup
+
+#### 1. Database
 
 ```sql
 CREATE DATABASE spec_check_rag;
@@ -87,7 +115,7 @@ CREATE DATABASE spec_check_rag;
 
 URL-encode special characters in passwords (`#` → `%23`, etc.).
 
-### 2. Backend
+#### 2. Backend
 
 ```powershell
 cd backend
@@ -97,6 +125,7 @@ pip install -r requirements.txt
 copy .env.example .env
 # Edit .env: DATABASE_URL, OPENAI_API_KEY
 python manage.py migrate
+python manage.py ensure_admin_user
 python manage.py runserver
 ```
 
@@ -112,7 +141,7 @@ PROCESSING_SYNC=True
 
 Parsing and summary generation run in-process; Redis is still used for health checks if running.
 
-### 3. Frontend
+#### 3. Frontend
 
 ```powershell
 cd frontend
@@ -125,9 +154,7 @@ App: [http://localhost:3010](http://localhost:3010) (fixed port — avoids clash
 
 Ensure `NEXT_PUBLIC_API_BASE_URL=http://localhost:8004/api/v1` in `frontend/.env.local` (or `8000` if nothing else uses it).
 
-**ChunkLoadError on wrong port?** If you see `Loading chunk app/layout failed` on `:3003`, you are hitting a **dead or stale** dev server. Use **only** `http://localhost:3010` after `npm run dev` in this project.
-
-### 4. Verify
+#### 4. Verify
 
 - Backend health returns `"status": "healthy"` (database + media; worker `ok` in sync mode).
 - Frontend loads dashboard; upload a PDF/DOCX and confirm processing → summary → chat.

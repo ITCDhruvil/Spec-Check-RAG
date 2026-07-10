@@ -12,6 +12,7 @@ from apps.intelligence.services.chunking_strategy import (
     dedupe_table_against_sections,
 )
 from apps.intelligence.services.citation_service import extract_section_prefix
+from apps.intelligence.services.fast_mode import fast_extraction_enabled
 from apps.parsing.choices import ParsingStatus
 from apps.parsing.models import DocumentSection, ParsedDocument
 
@@ -113,7 +114,11 @@ class ChunkingService:
             type_counts,
         )
 
-        if getattr(settings, "CONTEXTUAL_RETRIEVAL_ENABLED", False) and created:
+        if (
+            getattr(settings, "CONTEXTUAL_RETRIEVAL_ENABLED", False)
+            and created
+            and not fast_extraction_enabled()
+        ):
             doc_text = parsed.structured_text or ""
             if doc_text:
                 from apps.intelligence.services import contextual_chunk_service

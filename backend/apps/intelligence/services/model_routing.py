@@ -45,7 +45,7 @@ def chat_model() -> str:
 # fast  = cover-page style, mostly explicit text (gpt-4o-mini)
 # strong = scattered / legal / date logic / bonds (gpt-4o)
 EXTRACTION_MODEL_TIER: dict[str, ModelTier] = {
-    ExtractionType.SCOPE_OF_WORK: "fast",
+    ExtractionType.SCOPE_OF_WORK: "strong",
     ExtractionType.TECHNICAL_REQUIREMENTS: "fast",
     ExtractionType.ELIGIBILITY_CRITERIA: "strong",
     ExtractionType.SUBMISSION_DEADLINES: "strong",
@@ -102,6 +102,10 @@ def should_escalate_extraction(
     started_with_fast: bool,
 ) -> bool:
     """True when we should retry with the strong model."""
+    from apps.intelligence.services.fast_mode import fast_extraction_enabled
+
+    if fast_extraction_enabled():
+        return False
     if not getattr(settings, "INTELLIGENCE_MODEL_ESCALATION_ENABLED", True):
         return False
     if not started_with_fast:

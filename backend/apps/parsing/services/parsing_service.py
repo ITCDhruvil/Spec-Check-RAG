@@ -56,18 +56,43 @@ class DocumentParsingService:
             DocumentParsingService._persist_result(document, parsed_doc, result)
             DocumentParsingService._sync_extracted_content(document, result)
             if extension == ".docx":
-                try:
-                    from apps.parsing.services.docx_preview_service import (
-                        attach_docx_preview_metadata,
-                    )
+                from apps.intelligence.services.fast_mode import defer_docx_preview
 
-                    attach_docx_preview_metadata(document)
-                except Exception as exc:
-                    logger.warning(
-                        "docx_preview_skipped document_id=%s error=%s",
-                        document.id,
-                        exc,
-                    )
+                if defer_docx_preview():
+                    import threading
+
+                    def _preview_async() -> None:
+                        try:
+                            from apps.parsing.services.docx_preview_service import (
+                                attach_docx_preview_metadata,
+                            )
+
+                            attach_docx_preview_metadata(document)
+                        except Exception as exc:
+                            logger.warning(
+                                "docx_preview_deferred_failed document_id=%s error=%s",
+                                document.id,
+                                exc,
+                            )
+
+                    threading.Thread(
+                        target=_preview_async,
+                        name=f"docx-preview-{document.id}",
+                        daemon=True,
+                    ).start()
+                else:
+                    try:
+                        from apps.parsing.services.docx_preview_service import (
+                            attach_docx_preview_metadata,
+                        )
+
+                        attach_docx_preview_metadata(document)
+                    except Exception as exc:
+                        logger.warning(
+                            "docx_preview_skipped document_id=%s error=%s",
+                            document.id,
+                            exc,
+                        )
             summary = DocumentParsingService._build_summary(parsed_doc, result)
             logger.info(
                 "parsing_complete document_id=%s pages=%s sections=%s quality=%s",

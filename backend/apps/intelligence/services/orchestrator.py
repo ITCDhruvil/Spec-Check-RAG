@@ -146,20 +146,40 @@ class IntelligenceOrchestrator:
             if document.status != PipelineStage.CHUNKING_PROCESSING:
                 ProcessingJobService.transition_to(job, PipelineStage.CHUNKING_PROCESSING)
 
+            from apps.intelligence.services.fast_mode import (
+                skip_chunking_in_intelligence,
+                skip_embedding_in_intelligence,
+            )
+
             existing_chunks = list(
                 DocumentChunk.objects.filter(document=document).order_by("chunk_order")
             )
-            if regenerate or not existing_chunks:
+            if skip_chunking_in_intelligence():
+                if regenerate and existing_chunks:
+                    DocumentChunk.objects.filter(document=document).delete()
+                chunks = []
+                logger.info(
+                    "chunking_skipped document_id=%s reason=group_extraction",
+                    document_id,
+                )
+            elif regenerate or not existing_chunks:
                 chunks = ChunkingService.build_chunks(document)
             else:
                 chunks = existing_chunks
             ProcessingJobService.complete_stage(job, PipelineStage.CHUNKING_COMPLETED)
 
-            ProcessingJobService.transition_to(job, PipelineStage.EMBEDDING_PROCESSING)
-            from apps.chat.services.index_service import VectorIndexService
+            if skip_embedding_in_intelligence():
+                logger.info(
+                    "embedding_skipped document_id=%s reason=fast_mode",
+                    document_id,
+                )
+                ProcessingJobService.complete_stage(job, PipelineStage.EMBEDDING_COMPLETED)
+            else:
+                ProcessingJobService.transition_to(job, PipelineStage.EMBEDDING_PROCESSING)
+                from apps.chat.services.index_service import VectorIndexService
 
-            VectorIndexService.index_document(document, force=regenerate)
-            ProcessingJobService.complete_stage(job, PipelineStage.EMBEDDING_COMPLETED)
+                VectorIndexService.index_document(document, force=regenerate)
+                ProcessingJobService.complete_stage(job, PipelineStage.EMBEDDING_COMPLETED)
 
             ProcessingJobService.transition_to(job, PipelineStage.EXTRACTION_PROCESSING)
             ExtractedInsight.objects.filter(

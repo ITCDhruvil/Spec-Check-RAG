@@ -112,7 +112,7 @@ class OpenAIService:
 
             except (APITimeoutError, APIConnectionError, RateLimitError) as exc:
                 last_error = exc
-                wait = min(2**attempt, 30)
+                wait = min(2 ** attempt * (3 if isinstance(exc, RateLimitError) else 1), 45)
                 logger.warning(
                     "openai_retry attempt=%s error=%s wait=%s",
                     attempt + 1,
@@ -224,7 +224,7 @@ class OpenAIService:
 
             except (APITimeoutError, APIConnectionError, RateLimitError) as exc:
                 last_error = exc
-                wait = min(2**attempt, 30)
+                wait = min(2 ** attempt * (3 if isinstance(exc, RateLimitError) else 1), 45)
                 logger.warning(
                     "openai_retry attempt=%s error=%s wait=%s",
                     attempt + 1,

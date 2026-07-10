@@ -9,6 +9,8 @@ import re
 from datetime import datetime, timedelta
 from typing import Any
 
+from django.conf import settings
+
 from apps.intelligence.services.citation_service import (
     build_extraction_citation_lookup,
     canonicalize_summary_sources,
@@ -567,15 +569,24 @@ def _apply_spec_check_date_rules(spec_check_fields: dict[str, Any]) -> None:
             dates.append(bid_open)
             spec_check_fields["project_dates"] = dates
 
-    # Rule 2: Project start date — calculate from bid open date when absent.
-    _apply_start_date_rule(spec_check_fields, dates)
-
-    # Rule 3: Project end date — if stated as a duration, convert using start date.
-    _apply_end_date_rule(spec_check_fields, dates)
-
-    # Rule 4: Award-date anchor — if municipal_meeting_date_time is present and
-    # project_start or project_end say "X Days After Award", compute from award date.
-    _apply_award_date_anchor_rule(spec_check_fields, dates)
+    # Rule 2: Project start date — only infer when explicitly enabled.
+    if getattr(settings, "INTELLIGENCE_INFER_PROJECT_DATES", False):
+        _apply_start_date_rule(spec_check_fields, dates)
+        # Rule 3: Project end date — if stated as a duration, convert using start date.
+        _apply_end_date_rule(spec_check_fields, dates)
+        # Rule 4: Award-date anchor
+        _apply_award_date_anchor_rule(spec_check_fields, dates)
+    else:
+        # Accuracy mode: drop calculated / ungrounded inferred dates.
+        dates[:] = [
+            d
+            for d in dates
+            if not (
+                d.get("_calculated")
+                and d.get("_date_grounded") is not True
+            )
+        ]
+        spec_check_fields["project_dates"] = dates
 
 
 def _make_source(item: dict[str, Any]) -> dict[str, Any]:
