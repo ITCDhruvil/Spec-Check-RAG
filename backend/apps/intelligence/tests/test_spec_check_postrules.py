@@ -108,6 +108,52 @@ def test_acquisition_note_filter():
     )
 
 
+def test_attach_acquisition_events_to_metadata_row():
+    from apps.intelligence.services.summary_postprocess import (
+        build_spec_check_fields_from_insights,
+    )
+
+    insights = [
+        _FakeInsight(
+            "eligibility_criteria",
+            [
+                {
+                    "label": "project_document_acquisition_note",
+                    "value": "Download from BidNet and City Purchasing plan room",
+                    "source_text": "Documents available on BidNet and at City Purchasing",
+                    "page": 1,
+                    "confidence": 0.9,
+                    "citation_verified": True,
+                },
+                {
+                    "label": "project_document_acquisition_events",
+                    "value": (
+                        "Download at https://bidnet.example.com; hard copies at 123 Main St. "
+                        "Non-refundable $50 deposit for hard-copy plans; register on BidNet "
+                        "before download; pickup Mon–Fri 9am–4pm."
+                    ),
+                    "source_text": "A non-refundable deposit of $50 is required",
+                    "page": 2,
+                    "confidence": 0.85,
+                    "citation_verified": True,
+                },
+            ],
+        )
+    ]
+    spec = build_spec_check_fields_from_insights(insights)
+    finalize_spec_check_fields(spec)
+    row = next(
+        r
+        for r in spec["project_metadata_items"]
+        if r.get("field_key") == "project_document_acquisition_note"
+    )
+    assert "BidNet" in row["text"]
+    assert row.get("_note")
+    assert "non-refundable" in row["_note"].lower() or "Non-refundable" in row["_note"]
+    assert row.get("_note_sources")
+    assert "_acquisition_events" not in spec
+
+
 def test_merge_solicitation_numbers():
     spec = {
         "project_metadata_items": [
@@ -350,3 +396,29 @@ def test_location_merge_keeps_distinct_road_and_point_sites():
     value = rows[0]["text"].split(": ", 1)[1]
     assert "Main Street from 1st Avenue to 5th Avenue" in value
     assert "SR-91 between Exit 12 and Exit 18" in value
+
+
+def test_location_merge_keeps_district_and_counties():
+    spec = {
+        "project_size_location_items": [
+            {
+                "text": "Project location: District 8 – 2026 Paint Striping",
+                "field_key": "project_location",
+                "confidence": 90,
+                "sources": [{"citation_verified": True}],
+            },
+            {
+                "text": "Project location: Counties: BOYD, BROWN, CALDWELL",
+                "field_key": "project_location",
+                "confidence": 90,
+                "sources": [{"citation_verified": True}],
+            },
+        ]
+    }
+    merge_spec_check_multi_fields(spec)
+    rows = spec["project_size_location_items"]
+    assert len(rows) == 1
+    value = rows[0]["text"].split(": ", 1)[1]
+    assert "District 8" in value
+    assert "BOYD" in value
+    assert "CALDWELL" in value

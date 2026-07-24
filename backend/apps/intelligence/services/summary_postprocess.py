@@ -333,8 +333,8 @@ def _apply_end_date_rule(spec_check_fields: dict[str, Any], dates: list[dict]) -
     """
     Rule 3 – Project end date:
     If the document expresses the project end date as a duration (e.g. "180 calendar days",
-    "12 months", "1 year") rather than a calendar date, calculate the actual end date by
-    adding that duration to the project start date.
+    "12 months", "1 year", "CONTRACT TIME: 102 Calendar Days") rather than a calendar date,
+    calculate the actual end date by adding that duration to the project start date.
 
     • If the end date is already a calendar date → leave it untouched.
     • If the end date is absent → do not fabricate one.
@@ -342,7 +342,12 @@ def _apply_end_date_rule(spec_check_fields: dict[str, Any], dates: list[dict]) -
       duration text as-is because we cannot compute a meaningful offset.
     """
     end_entry = next(
-        (d for d in dates if str(d.get("text") or "").strip().lower() == "project end date"),
+        (
+            d
+            for d in dates
+            if str(d.get("text") or "").strip().lower() == "project end date"
+            or d.get("field_key") == "project_end_date_time"
+        ),
         None,
     )
     if end_entry is None:
@@ -354,7 +359,12 @@ def _apply_end_date_rule(spec_check_fields: dict[str, Any], dates: list[dict]) -
 
     # Find project start date (may itself be calculated)
     start_entry = next(
-        (d for d in dates if str(d.get("text") or "").strip().lower() == "project start date"),
+        (
+            d
+            for d in dates
+            if str(d.get("text") or "").strip().lower() == "project start date"
+            or d.get("field_key") == "project_start_date_time"
+        ),
         None,
     )
     if start_entry is None:
@@ -370,6 +380,7 @@ def _apply_end_date_rule(spec_check_fields: dict[str, Any], dates: list[dict]) -
         return  # raw_date was already a calendar date or completely unrecognised
 
     calc_str = calc_dt.strftime("%B %d, %Y")
+    # Keep the source duration visible (e.g. 102 Calendar Days) alongside the date.
     end_entry["date"] = f'{calc_str} (estimated from "{raw_date}")'
     end_entry["_calculated"] = True
 
@@ -479,18 +490,36 @@ def _apply_start_date_rule(spec_check_fields: dict[str, Any], dates: list[dict])
 
 def _attach_date_notes(spec_check_fields: dict[str, Any]) -> None:
     """Attach contextual notes to their date rows — after the date rules so
-    derived rows (e.g. bid_open copied from bid_deadline) can't clobber them."""
+    derived rows (e.g. bid_open copied from bid_deadline) can't clobber them.
+
+    If a note exists but the date itself was not found, create a shell row so
+    the UI can show "Not found in document" for the date and still render Events.
+    """
     notes = spec_check_fields.pop("_date_notes", None)
     if not isinstance(notes, dict) or not notes:
         return
     dates = spec_check_fields.get("project_dates") or []
+    if not isinstance(dates, list):
+        dates = []
+        spec_check_fields["project_dates"] = dates
+
     for target_key, note in notes.items():
-        row = next((d for d in dates if d.get("field_key") == target_key), None)
-        if row is None:
-            continue
         note_text = str(note.get("text") or "").strip()
         if not note_text:
             continue
+        row = next((d for d in dates if d.get("field_key") == target_key), None)
+        if row is None:
+            display = DEADLINE_LABEL_DISPLAY.get(target_key) or target_key.replace(
+                "_", " "
+            ).title()
+            row = {
+                "text": display,
+                "field_key": target_key,
+                "date": "",
+                "_not_found": True,
+                "sources": [],
+            }
+            dates.append(row)
         row["_note"] = note_text
         # Mandatory badge — only meaningful for events one attends.
         if target_key in ("pre_bid_deadline_date_time", "site_visit_date_time"):
@@ -506,12 +535,34 @@ def _attach_date_notes(spec_check_fields: dict[str, Any]) -> None:
             row["_note_sources"] = [source]
 
 
+def _attach_acquisition_events(spec_check_fields: dict[str, Any]) -> None:
+    """Attach Document acquisition Events under the acquisition metadata row."""
+    note = spec_check_fields.pop("_acquisition_events", None)
+    if not isinstance(note, dict):
+        return
+    note_text = str(note.get("text") or "").strip()
+    if not note_text:
+        return
+    items = spec_check_fields.get("project_metadata_items") or []
+    row = next(
+        (r for r in items if r.get("field_key") == ACQUISITION_EVENTS_TARGET),
+        None,
+    )
+    if row is None:
+        return
+    row["_note"] = note_text
+    source = note.get("source")
+    if source:
+        row["_note_sources"] = [source]
+
+
 def finalize_spec_check_fields(spec_check_fields: dict[str, Any]) -> list[dict[str, Any]]:
     """Date rules, post-rules, per-field confidence, and date validation."""
     if not isinstance(spec_check_fields, dict):
         return []
     _apply_spec_check_date_rules(spec_check_fields)
     _attach_date_notes(spec_check_fields)
+    _attach_acquisition_events(spec_check_fields)
     warnings = apply_spec_check_postrules(spec_check_fields)
     apply_confidence_to_spec_check_fields(spec_check_fields)
     date_warnings = validate_date_ordering(spec_check_fields)
@@ -578,6 +629,10 @@ DATE_NOTE_TARGETS: dict[str, str] = {
     "question_deadline_note": "question_deadline_date_time",
     "award_note": "municipal_meeting_date_time",
 }
+
+# Acquisition Events label (eligibility_criteria) → metadata field_key.
+ACQUISITION_EVENTS_LABEL = "project_document_acquisition_events"
+ACQUISITION_EVENTS_TARGET = "project_document_acquisition_note"
 
 
 _AFTER_AWARD_RE = re.compile(
@@ -764,11 +819,26 @@ def build_spec_check_fields_from_insights(insights: list) -> dict[str, Any]:
     seen_bonds: set[str] = set()
     seen_set_asides: set[str] = set()
 
+    # Acquisition Events (logistics paragraph) — attached later to the
+    # project_document_acquisition_note row, same pattern as date *_notes.
+    acquisition_events_item: dict[str, Any] | None = None
+    for et in ("eligibility_criteria", "mandatory_documents"):
+        for item in by_type.get(et, []):
+            label, value = _extract_label_value(item)
+            if label != ACQUISITION_EVENTS_LABEL or not value:
+                continue
+            if acquisition_events_item is None or len(value) > len(
+                str(acquisition_events_item.get("value") or "")
+            ):
+                acquisition_events_item = item
+
     # ── Identity / metadata from eligibility + mandatory documents ───────────
     for et in ("eligibility_criteria", "mandatory_documents"):
         for item in by_type.get(et, []):
             label, value = _extract_label_value(item)
             if not label or not value:
+                continue
+            if label == ACQUISITION_EVENTS_LABEL:
                 continue
             fdef = field_def(label)
             if fdef is None:
@@ -1042,6 +1112,14 @@ def build_spec_check_fields_from_insights(insights: list) -> dict[str, Any]:
         "set_aside_items": set_aside_items,
         # Consumed (and removed) by finalize_spec_check_fields.
         "_date_notes": date_notes,
+        "_acquisition_events": (
+            {
+                "text": str(acquisition_events_item.get("value") or "").strip(),
+                "source": _make_source(acquisition_events_item),
+            }
+            if acquisition_events_item is not None
+            else None
+        ),
     }
 
 

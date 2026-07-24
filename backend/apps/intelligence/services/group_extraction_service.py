@@ -38,8 +38,10 @@ logger = logging.getLogger(__name__)
 _TRUNCATION_MARKER = "\n\n[... middle of document omitted for length ...]\n\n"
 
 # Groups that must succeed for a usable spec-check briefing.
-CRITICAL_GROUP_IDS = frozenset({"dates", "project_description", "project_identity"})
-CRITICAL_GROUP_ORDER = ("project_identity", "dates", "project_description")
+# project_description is valuable but not critical — highway special-provisions
+# packets often have no standalone SOW section.
+CRITICAL_GROUP_IDS = frozenset({"dates", "project_identity"})
+CRITICAL_GROUP_ORDER = ("project_identity", "dates")
 
 
 def _model_for_group(group: ExtractionGroup) -> str:
@@ -236,16 +238,64 @@ _GROUP_SLICE_NEEDLES: dict[str, tuple[str, ...]] = {
         "conference id",
         "dial",
     ),
+    # Logistics for obtaining bid documents — feeds project_document_acquisition_events.
+    "acquisition_events": (
+        "obtain",
+        "download",
+        "bid documents",
+        "bidding documents",
+        "plan room",
+        "plans and specifications",
+        "procurement portal",
+        "bidnet",
+        "demandstar",
+        "bonfire",
+        "planetbids",
+        "sam.gov",
+        "non-refundable",
+        "refundable",
+        "deposit",
+        "document fee",
+        "pick up",
+        "pickup",
+        "available for",
+        "register",
+        "vendor registration",
+        "hard copy",
+        "soft copy",
+    ),
     "location_and_size": (
         "project location",
         "site location",
         "location of work",
+        "location:",
         "work site",
         "project site",
         "place of work",
         "situated",
         "located in",
         "located at",
+        "in counties",
+        "counties:",
+        "county",
+        "district",
+        "highway",
+        "state highway",
+        "roadway",
+        "road ",
+        "route ",
+        "milepost",
+        "mile post",
+        "intersection",
+        "cross road",
+        "crossroad",
+        "bridge",
+        "overpass",
+        "interchange",
+        "lane",
+        "from ",
+        " to ",
+        "corridor",
         "square feet",
         "square footage",
         "sq. ft",
@@ -614,6 +664,38 @@ class GroupExtractionService:
             if g.group_id in CRITICAL_GROUP_IDS
             and g.extraction_type not in results
         ]
+
+        # ── Verify + notes even when a non-critical group is empty ──────────
+        # Date/acquisition Events must still run when identity+dates succeeded
+        # but e.g. project_description is absent.
+        GroupExtractionService._verify_must_have_fields(
+            document, summary, results, page_texts
+        )
+        try:
+            GroupExtractionService._backfill_cover_identifiers_and_contract_time(
+                document, summary, results, page_texts
+            )
+        except Exception as exc:
+            logger.warning("cover_backfill_failed error=%s", exc)
+        try:
+            GroupExtractionService._backfill_cover_locations(
+                document, summary, results, page_texts
+            )
+        except Exception as exc:
+            logger.warning("cover_location_backfill_failed error=%s", exc)
+        try:
+            GroupExtractionService._extract_date_notes(
+                document, summary, results, page_texts
+            )
+        except Exception as exc:
+            logger.warning("date_notes_extraction_failed error=%s", exc)
+        try:
+            GroupExtractionService._extract_acquisition_events(
+                document, summary, results, page_texts
+            )
+        except Exception as exc:
+            logger.warning("acquisition_events_extraction_failed error=%s", exc)
+
         if missing_critical:
             logger.error(
                 "group_extraction_incomplete document_id=%s missing_critical=%s",
@@ -621,21 +703,6 @@ class GroupExtractionService:
                 missing_critical,
             )
             raise GroupExtractionIncompleteError(missing_critical)
-
-        # ── Verify pass: must-have fields get one focused strong-model re-ask ─
-        GroupExtractionService._verify_must_have_fields(
-            document, summary, results, page_texts
-        )
-
-        # ── Dedicated notes call: contextual details around each date event ──
-        # A single focused call is far more reliable than bundling the six
-        # note fields into the (already large) dates prompt.
-        try:
-            GroupExtractionService._extract_date_notes(
-                document, summary, results, page_texts
-            )
-        except Exception as exc:
-            logger.warning("date_notes_extraction_failed error=%s", exc)
 
         ordered_insights = [
             results[g.extraction_type]
@@ -648,6 +715,274 @@ class GroupExtractionService:
             len(ordered_insights),
         )
         return ordered_insights
+
+    @staticmethod
+    def _backfill_cover_identifiers_and_contract_time(
+        document: Document,
+        summary: GeneratedSummary,
+        results: dict[str, ExtractedInsight],
+        page_texts: list[tuple[int, str]],
+    ) -> None:
+        """Deterministic cover-page backfill for IDs and CONTRACT TIME.
+
+        LLMs often return only Project No. + one numeric code; NDOT-style covers
+        also print Contract ID, Control No. Seq. No., Call Order, and CONTRACT TIME
+        as a duration used to compute project end.
+        """
+        cover = "\n".join((t or "") for _, t in page_texts[:5])
+        if not cover.strip():
+            return
+
+        # ── Solicitation / ID labels ──────────────────────────────────────────
+        id_patterns: tuple[tuple[str, re.Pattern[str]], ...] = (
+            ("Project No.", re.compile(
+                r"PROJECT\s*NO\.?\s*:?\s*([A-Z0-9][-A-Z0-9/]*)", re.I
+            )),
+            ("Contract ID", re.compile(
+                r"CONTRACT\s*ID\s*:?\s*([A-Z0-9][-A-Z0-9/]*)", re.I
+            )),
+            ("Control No. Seq. No.", re.compile(
+                r"CONTROL\s*NO\.?\s*SEQ\.?\s*NO\.?\s*:?\s*([0-9][0-9\s-]{2,})", re.I
+            )),
+            ("Call Order", re.compile(
+                r"CALL\s*ORDER\s*:?\s*(\d{2,})", re.I
+            )),
+            ("Bid No.", re.compile(
+                r"\bBID\s*NO\.?\s*:?\s*([A-Z0-9][-A-Z0-9/]*)", re.I
+            )),
+        )
+        found_ids: list[dict] = []
+        for label, pat in id_patterns:
+            m = pat.search(cover)
+            if not m:
+                continue
+            code = re.sub(r"\s+", " ", m.group(1)).strip(" :-")
+            if not code:
+                continue
+            value = f"{label}: {code}"
+            found_ids.append(
+                {
+                    "requirement": f"project_solicitation_number: {value}",
+                    "label": "project_solicitation_number",
+                    "value": value,
+                    "page": 1,
+                    "section": "cover / proposal form",
+                    "source_text": m.group(0).strip()[:240],
+                    "confidence": 0.95,
+                    "citation_verified": True,
+                }
+            )
+
+        if found_ids:
+            insight = results.get("eligibility_criteria")
+            existing = list((insight.payload.get("items") or []) if insight else [])
+
+            def _norm(v: str) -> str:
+                return re.sub(r"\s+", " ", (v or "").strip().lower())
+
+            def _bare(v: str) -> str:
+                n = _norm(v)
+                return n.split(": ", 1)[-1] if ": " in n else n
+
+            # Drop unlabeled bare codes that match a labeled cover ID (upgrade).
+            labeled_bares = {_bare(i["value"]) for i in found_ids}
+            kept_existing: list[dict] = []
+            for row in existing:
+                if str(row.get("label") or "") != "project_solicitation_number":
+                    kept_existing.append(row)
+                    continue
+                row_val = _norm(str(row.get("value") or ""))
+                if ": " not in row_val and row_val in labeled_bares:
+                    continue  # replaced by labeled cover form below
+                kept_existing.append(row)
+
+            existing_full = {
+                _norm(str(i.get("value") or ""))
+                for i in kept_existing
+                if str(i.get("label") or "") == "project_solicitation_number"
+            }
+            existing_bares = {
+                _bare(str(i.get("value") or ""))
+                for i in kept_existing
+                if str(i.get("label") or "") == "project_solicitation_number"
+            }
+
+            to_add: list[dict] = []
+            for item in found_ids:
+                full = _norm(item["value"])
+                bare = _bare(item["value"])
+                if full in existing_full:
+                    continue
+                # Keep Control No. Seq. No. "81162 000" even when "81162" exists.
+                if bare in existing_bares and " " not in bare:
+                    continue
+                to_add.append(item)
+                existing_full.add(full)
+                existing_bares.add(bare)
+
+            merged = merge_insight_items(kept_existing + to_add)
+            if insight is None:
+                insight = GroupExtractionService._persist_insight(
+                    document=document,
+                    summary=summary,
+                    extraction_type="eligibility_criteria",
+                    items=merged,
+                    model="cover-backfill",
+                    usage={},
+                )
+                results["eligibility_criteria"] = insight
+            else:
+                insight.payload = {"items": merged}
+                insight.save(update_fields=["payload", "updated_at"])
+                ExtractionService._sync_source_references(document, insight)
+            logger.info(
+                "cover_id_backfill document_id=%s added=%s",
+                document.id,
+                [i.get("value") for i in to_add],
+            )
+
+        # ── CONTRACT TIME → project_end duration ─────────────────────────────
+        time_m = re.search(
+            r"CONTRACT\s*TIME\s*:?\s*(\d+(?:\.\d+)?)\s*(Calendar\s+Days?|Working\s+Days?|Days?)",
+            cover,
+            re.I,
+        )
+        if not time_m:
+            return
+        duration = re.sub(
+            r"\s+", " ", f"{time_m.group(1)} {time_m.group(2).strip()}"
+        )
+        dates_insight = results.get("submission_deadlines")
+        if dates_insight is None:
+            return
+        items = list(dates_insight.payload.get("items") or [])
+        has_end = any(
+            str(i.get("label") or "").strip() == "project_end_date_time"
+            and str(i.get("date_time") or i.get("value") or "").strip()
+            for i in items
+        )
+        if has_end:
+            return
+        items.append(
+            {
+                "requirement": f"project_end_date_time: {duration}",
+                "label": "project_end_date_time",
+                "value": duration,
+                "date_time": duration,
+                "page": 1,
+                "section": "cover / proposal form",
+                "source_text": time_m.group(0).strip()[:240],
+                "confidence": 0.95,
+                "citation_verified": True,
+            }
+        )
+        dates_insight.payload = {"items": merge_insight_items(items)}
+        dates_insight.save(update_fields=["payload", "updated_at"])
+        ExtractionService._sync_source_references(document, dates_insight)
+        logger.info(
+            "contract_time_backfill document_id=%s duration=%s",
+            document.id,
+            duration,
+        )
+
+        # Location cover lines are handled in _backfill_cover_locations below.
+
+    @staticmethod
+    def _backfill_cover_locations(
+        document: Document,
+        summary: GeneratedSummary,
+        results: dict[str, ExtractedInsight],
+        page_texts: list[tuple[int, str]],
+    ) -> None:
+        """Pull LOCATION / IN COUNTIES lines from the proposal cover when present."""
+        cover = "\n".join((t or "") for _, t in page_texts[:5])
+        if not cover.strip():
+            return
+
+        found: list[dict] = []
+        loc_m = re.search(
+            r"LOCATION\s*:?\s*([^\n\r]{3,160})",
+            cover,
+            re.I,
+        )
+        if loc_m:
+            val = re.sub(r"\s+", " ", loc_m.group(1)).strip(" :-")
+            # Avoid capturing the whole rest of a dense line after a misplaced match.
+            val = val.split("  ")[0].strip()
+            if val and len(val) >= 3:
+                found.append(
+                    {
+                        "requirement": f"project_location: {val}",
+                        "label": "project_location",
+                        "value": val,
+                        "page": 1,
+                        "section": "cover / proposal form",
+                        "source_text": loc_m.group(0).strip()[:240],
+                        "confidence": 0.95,
+                        "citation_verified": True,
+                    }
+                )
+
+        counties_m = re.search(
+            r"IN\s+COUNTIES\s*:?\s*([A-Z0-9][A-Z0-9,\s\-]{5,300}?)(?=\n\s*[A-Z][A-Z ]{2,}:|\n\s*CONTRACT|\n\s*PROJECT|\Z)",
+            cover,
+            re.I,
+        )
+        if counties_m:
+            counties = re.sub(r"\s+", " ", counties_m.group(1)).strip(" ,:-")
+            if counties:
+                val = f"Counties: {counties}"
+                found.append(
+                    {
+                        "requirement": f"project_location: {val}",
+                        "label": "project_location",
+                        "value": val,
+                        "page": 1,
+                        "section": "cover / proposal form",
+                        "source_text": counties_m.group(0).strip()[:240],
+                        "confidence": 0.95,
+                        "citation_verified": True,
+                    }
+                )
+
+        if not found:
+            return
+
+        insight = results.get("technical_requirements")
+        existing = list((insight.payload.get("items") or []) if insight else [])
+
+        def _norm(v: str) -> str:
+            return re.sub(r"\s+", " ", (v or "").strip().lower())
+
+        existing_vals = {
+            _norm(str(i.get("value") or ""))
+            for i in existing
+            if str(i.get("label") or "") == "project_location"
+        }
+        to_add = [i for i in found if _norm(i["value"]) not in existing_vals]
+        if not to_add and insight is not None:
+            return
+
+        merged = merge_insight_items(existing + to_add)
+        if insight is None:
+            insight = GroupExtractionService._persist_insight(
+                document=document,
+                summary=summary,
+                extraction_type="technical_requirements",
+                items=merged,
+                model="cover-backfill",
+                usage={},
+            )
+            results["technical_requirements"] = insight
+        else:
+            insight.payload = {"items": merged}
+            insight.save(update_fields=["payload", "updated_at"])
+            ExtractionService._sync_source_references(document, insight)
+        logger.info(
+            "cover_location_backfill document_id=%s added=%s",
+            document.id,
+            [i.get("value") for i in to_add],
+        )
 
     @staticmethod
     def _extract_date_notes(
@@ -682,10 +1017,14 @@ class GroupExtractionService:
             return
 
         prompt = f"""These dates were already extracted from the tender document:
-{anchors}
+{anchors or "(none — still extract notes when the document has event details without a date)"}
 
 Now extract ONLY the contextual NOTE for each date event. Use EXACTLY these labels:
 bid_deadline_note, bid_open_note, pre_bid_note, site_visit_note, question_deadline_note, award_note.
+
+Extract a note whenever the document states how/where/rules for that event — EVEN IF that event's
+calendar date/time was not found or is not listed above. Example: questions must go through BidX
+with no due date → still emit question_deadline_note; leave the date itself absent.
 
 What each note captures (each detail as its own short sentence; omit a note entirely when the document states nothing for that event; NEVER put one event's details into another event's note):
 - bid_deadline_note: where/how bids are submitted (portal, mailing address, copies, envelope marking), named contact person with email/phone, prohibited methods (no oral/email/fax), any instruction tied to the due date.
@@ -747,6 +1086,112 @@ Document pages:
             "date_notes_saved document_id=%s notes=%s",
             document.id,
             [i.get("label") for i in validated],
+        )
+
+    @staticmethod
+    def _extract_acquisition_events(
+        document: Document,
+        summary: GeneratedSummary,
+        results: dict[str, ExtractedInsight],
+        page_texts: list[tuple[int, str]],
+    ) -> None:
+        """Focused call for document-acquisition Events; merged into the
+        eligibility_criteria insight so postprocess attaches it to the
+        project_document_acquisition_note row."""
+        insight = results.get("eligibility_criteria")
+        if insight is None:
+            return
+
+        existing = insight.payload.get("items") or []
+        # Prefer grounding the events call on the short acquisition paraphrase
+        # when we already have one; still run without it so logistics alone
+        # can surface when the main note was missed.
+        anchors = "\n".join(
+            f"- {i.get('label')}: {i.get('value') or ''}"
+            for i in existing
+            if str(i.get("label") or "").strip() == "project_document_acquisition_note"
+            and str(i.get("value") or "").strip()
+        )
+
+        cover = "\n\n".join(
+            f"--- Page {p} ---\n{(t or '').strip()}"
+            for p, t in page_texts[:5]
+            if (t or "").strip()
+        )
+        extra = _keyword_page_slice("acquisition_events", page_texts, max_chars=24_000)
+        context = "\n\n".join(s for s in (cover, extra) if s)[:60_000]
+        if not context:
+            return
+
+        anchor_block = (
+            f"Already extracted acquisition paraphrase:\n{anchors}\n\n"
+            if anchors
+            else ""
+        )
+        prompt = f"""{anchor_block}Extract ONE contextual Events note for how bidders obtain the bid documents.
+
+Use EXACTLY this label: project_document_acquisition_events
+
+Write ONE single paragraph (not bullets) with ALL supporting details stated in the document — everything except the bare source name already used as the main acquisition statement:
+- Full portal/platform URL(s) and plan room / pickup office address when both (or either) appear
+- Fees or deposits — amount, whether refundable or non-refundable, free if stated
+- Registration / vendor account / approved-bidder requirements to get documents
+- What is included (plans, specs, addenda, hard copy vs soft copy, number of sets)
+- Pickup hours, contact person, appointment rules, shipping / mail options
+- Documents available from / last day to obtain documents (when stated)
+- Restrictions (e.g. official set only, no email distribution)
+
+Rules:
+- Include whatever the document states — portal AND plan room details when both are present.
+- Put ALL logistics here; the main acquisition field is only a short "where" statement.
+- Do NOT invent details. Omit the field entirely when there are no supporting logistics beyond a bare portal/office name.
+- Do NOT write filler like "no fees are mentioned" / "no additional details are provided" — only state facts from the document.
+- Do NOT include bid SUBMISSION instructions (those belong to bid_deadline_note).
+- Every item MUST include verbatim source_text from the pages below.
+- Respond with valid JSON only: {{"items": [{{"requirement": "project_document_acquisition_events: <value>", "label": "project_document_acquisition_events", "value": "<one paragraph>", "page": integer or null, "section": "...", "source_text": "verbatim excerpt", "confidence": 0.0 to 1.0}}]}}
+
+Document pages:
+---
+{context}
+---"""
+
+        client = OpenAIService()
+        try:
+            data, _usage = client.chat_json(
+                system=EXTRACTION_SYSTEM_PROMPT,
+                user=prompt,
+                model=model_for_tier("strong"),
+            )
+        except Exception as exc:
+            logger.warning("acquisition_events_llm_failed error=%s", exc)
+            return
+
+        found = [
+            i for i in (data.get("items") or [])
+            if str(i.get("label") or "").strip() == "project_document_acquisition_events"
+            and str(i.get("value") or "").strip()
+        ]
+        if not found:
+            logger.info("acquisition_events_empty document_id=%s", document.id)
+            return
+
+        total_pages = max((p for p, _ in page_texts), default=1)
+        validated = validate_and_score_items(
+            found,
+            chunk_text=context,
+            section_title="Document acquisition events",
+            page_start=1,
+            page_end=total_pages,
+            total_pages=total_pages,
+            page_texts=page_texts,
+        )
+        merged = merge_insight_items(existing + validated)
+        insight.payload = {"items": merged}
+        insight.save(update_fields=["payload", "updated_at"])
+        ExtractionService._sync_source_references(document, insight)
+        logger.info(
+            "acquisition_events_saved document_id=%s",
+            document.id,
         )
 
     # Must-have fields: absence after a successful group pass triggers one

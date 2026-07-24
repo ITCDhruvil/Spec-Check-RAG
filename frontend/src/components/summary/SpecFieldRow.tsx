@@ -239,17 +239,25 @@ function CorrectionForm({
   );
 }
 
-/** Events context block under a date row — own copy / feedback / citation. */
+/** Events context block under a field row — own copy / feedback / citation. */
 export function EventsBlock({
   fieldKey,
   text,
   sources,
+  extractionType = "submission_deadlines",
+  notFound = false,
 }: {
   /** Feedback routes as "<fieldKey>_events". */
   fieldKey: string;
-  text: string;
+  text?: string;
   sources?: SourceCitation[];
+  extractionType?: string;
+  /** When true, show Events: Not found in document (still feedbackable). */
+  notFound?: boolean;
 }) {
+  const displayText = notFound ? "" : (text ?? "").trim();
+  const isEmpty = notFound || !displayText;
+
   const [open, setOpen] = useState(false);
   const [feedbackState, setFeedbackState] = useState<"idle" | "form" | "done">("idle");
   const [submitted, setSubmitted] = useState<"up" | "down" | null>(null);
@@ -257,7 +265,7 @@ export function EventsBlock({
   const params = useParams();
   const documentId = params?.id ? String(params.id) : null;
 
-  const hasCitations = Boolean(sources?.length);
+  const hasCitations = !isEmpty && Boolean(sources?.length);
   const primaryTarget = hasCitations
     ? getPrimaryCitationTarget(sources as SourceCitation[])
     : null;
@@ -274,9 +282,9 @@ export function EventsBlock({
     try {
       await submitFieldFeedback(documentId, {
         field_key: `${fieldKey}_events`,
-        extraction_type: "submission_deadlines",
+        extraction_type: extractionType,
         rating,
-        extracted_value: text,
+        extracted_value: isEmpty ? "Not found in document" : displayText,
         source_text_context: sources?.[0]?.source_text ?? "",
         ...(extra ?? {}),
       });
@@ -290,10 +298,14 @@ export function EventsBlock({
       <div className="flex items-center justify-between gap-3">
         <p className="min-w-0 max-w-[60%]">
           <span className="font-medium text-ink">Events: </span>
-          {text}
+          {isEmpty ? (
+            <span className="italic text-ink-muted">Not found in document</span>
+          ) : (
+            displayText
+          )}
         </p>
         <div className="flex shrink-0 items-center gap-1.5">
-          <CopyValueButton value={text} />
+          {!isEmpty && <CopyValueButton value={displayText} />}
           {hasVerified && primaryTarget && canJump && (
             <JumpButton
               onClick={() => {
@@ -324,7 +336,7 @@ export function EventsBlock({
       {feedbackState === "form" && (
         <CorrectionForm
           fieldLabel="Events"
-          extractedValue={text}
+          extractedValue={isEmpty ? "Not found in document" : displayText}
           onSubmit={async (data) => {
             await sendFeedback("down", data);
             setFeedbackState("done");
@@ -390,6 +402,24 @@ export function SpecFieldRow({
 
   const label = resolveFieldLabel(item);
   const value = notFound ? "" : resolveFieldValue(item, valueAsSubtext);
+  const solicitationParts = notFound
+    ? []
+    : value.split(";").map((p) => p.trim()).filter(Boolean).map((p) => {
+        if (
+          item.field_key === "project_solicitation_number" &&
+          p.includes(": ")
+        ) {
+          const i = p.indexOf(": ");
+          const left = p.slice(0, i);
+          const right = p.slice(i + 2).trim();
+          if (left.length <= 40 && right) return right;
+        }
+        return p;
+      });
+  const displayValue =
+    item.field_key === "project_solicitation_number"
+      ? solicitationParts.join("; ")
+      : value;
 
   // Best source text for feedback context.
   const sourceTextContext =
@@ -443,9 +473,12 @@ export function SpecFieldRow({
           {(() => {
             // Multi-value fields ("A; B; C") render as a numbered list; the
             // copy button still copies the semicolon-joined string.
-            const parts = notFound
-              ? []
-              : value.split(";").map((p) => p.trim()).filter(Boolean);
+            const parts =
+              item.field_key === "project_solicitation_number"
+                ? solicitationParts
+                : notFound
+                  ? []
+                  : value.split(";").map((p) => p.trim()).filter(Boolean);
             const isMulti = parts.length > 1;
             return (
               <div className="text-sm leading-relaxed text-ink">
@@ -465,7 +498,7 @@ export function SpecFieldRow({
                     ))}
                   </ol>
                 ) : (
-                  <span className="font-normal">{value || "—"}</span>
+                  <span className="font-normal">{displayValue || "—"}</span>
                 )}
                 {!notFound && valueBadge}
               </div>
@@ -535,7 +568,7 @@ export function SpecFieldRow({
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
-          {!notFound && <CopyValueButton value={value || "—"} />}
+          {!notFound && <CopyValueButton value={displayValue || "—"} />}
           {!notFound && hasCitations && hasVerified && primaryTarget && canJump && (
             <JumpButton onClick={handleDirectJump} />
           )}

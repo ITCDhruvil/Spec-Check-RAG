@@ -8,7 +8,9 @@ Rules:
   Example good: "FORD PARK PLAYGROUND AND RESTROOM IMPROVEMENTS"
   Example BAD (do NOT use): "PREFABRICATED RESTROOM BUILDING" (that is a spec section, not the project title).
 - project_solicitation_number: find ALL reference identifiers labeled Bid No., Project No., Contract No.,
-  Spec No., RFP No., IFB No., Solicitation No., File No., Job No., or similar. Return ONE item per identifier.
+  Contract ID, Control No., Control No. Seq. No., Call Order, Spec No., RFP No., IFB No., Solicitation No.,
+  File No., Job No., or similar. Return ONE item per identifier. Prefer value format '<Label>: <code>'
+  (e.g. 'Project No.: AFE-H051', 'Contract ID: 81162', 'Call Order: 800').
 - project_engineer: the PERSON's full name appearing after labels such as "Project Engineer:", "Engineer of Record:",
   "Designed by:", "Engineer:". Extract the name ONLY — not the firm name.
 - project_architect: the PERSON's full name appearing after labels such as "Project Architect:", "Architect:",
@@ -131,12 +133,9 @@ EXTRACTION_TYPE_INSTRUCTIONS = {
         "project_name, project_owner, project_engineer, project_architect, "
         "project_sector (Public/Private), project_solicitation_number(s) — return ONE item per "
         "identifier found (Bid No., RFP No., Project No., Contract No., Advertisement #, etc.). "
-        "and project_document_acquisition_note ONLY when the text explains how/where to OBTAIN "
-        "or DOWNLOAD bid documents. Prefer in order: (1) portal URL or website (e.g. sam.gov, "
-        "iSupplier, procurement portal), (2) system login instructions, (3) physical pickup address, "
-        "(4) contact person WITH email/phone specifically for obtaining documents. "
-        "A general inquiry phone number alone is NOT sufficient — only extract if it explicitly "
-        "mentions obtaining or downloading bid documents. "
+        "and project_document_acquisition_note ONLY when the text says where to OBTAIN "
+        "or DOWNLOAD bid documents — ONE short 'where' statement only (portal/plan room name). "
+        "URLs, fees, registration, hours, and contacts go elsewhere (Events), not in this field. "
         ""
         "CRITICAL selection rules: "
         "- project_name MUST be the tender/project title from cover/notice/bid schedule header. "
@@ -146,8 +145,12 @@ EXTRACTION_TYPE_INSTRUCTIONS = {
         "- project_architect: extract the firm name, government body, or individual name as written "
         "  (e.g. 'Smith Architects AIA', 'State Architect', 'John Smith'). "
         "- project_sector: only set Public if clearly a public agency bid; if unclear, omit. "
-        "- project_document_acquisition_note: NEVER extract bid submission instructions, offer "
-        "deadlines, bond requirements, or email subject lines for submitting proposals. "
+        "- project_document_acquisition_note: ONE short statement naming ONLY where to get the docs "
+        "(e.g. 'Download from BidNet.', 'PlanetBids and City Purchasing plan room.'). "
+        "Name portal AND plan room when both are stated. "
+        "Do NOT include URLs, fees, registration, hours, contacts, or other logistics. "
+        "NEVER extract bid submission instructions, offer deadlines, bond requirements, or email "
+        "subject lines for submitting proposals. "
         "NEVER output 'not explicitly stated' or similar negative phrases — omit the field instead. "
         ""
         "Do NOT extract project_description here (scope_of_work handles description). "
@@ -175,7 +178,9 @@ EXTRACTION_TYPE_INSTRUCTIONS = {
         "- 'Site Visit' / 'Site Walkthrough' / 'Mandatory Site Inspection' → site_visit_date_time. "
         "- 'Questions Due' / 'RFI Deadline' / 'Clarification Deadline' → question_deadline_date_time. "
         "- 'Council Meeting' / 'Award Meeting' / 'Board Meeting' → municipal_meeting_date_time. "
-        "- 'Delivery By' / 'Deliver By' / 'Performance Period' → project_end_date_time. "
+        "- 'Delivery By' / 'Deliver By' / 'Performance Period' / 'CONTRACT TIME: N Calendar Days' "
+        "→ project_end_date_time (keep duration text like '102 Calendar Days' when that is what the document states). "
+        "- 'Tentative Start Date' / 'Notice to Proceed' / 'Project Start' → project_start_date_time. "
         "CRITICAL: 'Date Issued', 'Issue Date', 'Issued', 'Date of Issuance', 'Advertisement Date', "
         "and 'Dated' are NOT deadlines — these are when the document was published. NEVER map them to "
         "bid_deadline_date_time or any deadline label. Omit issue/advertisement dates entirely. "
@@ -185,18 +190,18 @@ EXTRACTION_TYPE_INSTRUCTIONS = {
         "requirement must be '<label>: <date_time>' as one line."
     ),
     "technical_requirements": (
-        "Extract ONLY project_square_footage and project_location. "
-        "For project_location, capture the MOST SPECIFIC location of the work for each "
-        "distinct work site. Prefer, in order: a full street address, then facility/building "
-        "name plus address, then a road segment or point-to-point description, then a building "
-        "or site name alone. A bare city or jurisdiction (e.g. 'In the City of Bell Gardens') "
-        "is a FALLBACK — use it ONLY when no more specific location appears anywhere in the text. "
-        "Do NOT emit both a bare city and a full address for the same site; the full address "
-        "already contains the city. If the document describes MULTIPLE DISTINCT work sites, "
-        "emit one project_location item per distinct site. "
-        "If facility name, street, and city/state appear together for one site, combine them "
-        "into a single comma-separated project_location value. "
-        "Do NOT capture detailed scope-of-work cable runs or equipment lists as a location. "
+        "Extract project_square_footage and project_location. "
+        "For project_location, extract EVERY distinct place where the actual work/site is located. "
+        "Include ALL of these when stated (one item per distinct description): "
+        "full street address; short address; city/town/village; county or IN COUNTIES lists; "
+        "district/region; road/highway/route/lane names; bridges/overpasses/interchanges; "
+        "intersections and cross roads; point-to-point or corridor text (from/to, mileposts, "
+        "segments); facility/building/park names; area-of-work phrases "
+        "(e.g. 'state highways throughout District 8'). "
+        "Keep the document wording. If LOCATION and IN COUNTIES both appear, emit both. "
+        "Do NOT use only the project title when a Location/Counties/site line exists. "
+        "Do NOT emit bid-opening / mailing / procurement office addresses as work sites. "
+        "Do NOT capture detailed scope cable runs or equipment lists as a location. "
         "CRITICAL: every item MUST set label = 'project_location' or label = 'project_square_footage' exactly. "
         "Set requirement = '<label>: <value>' and value = extracted text. "
         "Field names: project_square_footage, project_location."
@@ -236,10 +241,11 @@ EXTRACTION_TYPE_INSTRUCTIONS = {
         "If no bond/security instrument is required in this document section, return {\"items\": []}."
     ),
     "mandatory_documents": (
-        "Extract project_document_acquisition_note (how/where to obtain bid documents) and "
+        "Extract project_document_acquisition_note (ONE short statement naming ONLY where to "
+        "obtain bid documents — portal/plan room name(s), no URLs/fees/contacts) and "
         "project_solicitation_number(s) when present. "
-        "project_document_acquisition_note must describe obtaining/downloading documents — portal, "
-        "website, contact, physical location — NOT bid submission or bond instructions. "
+        "project_document_acquisition_note must name where documents are obtained — NOT bid "
+        "submission or bond instructions. "
         "If the tender specifies bond/check requirements, extract under bond categories only. "
         "Allowed field_name values: project_document_acquisition_note, project_solicitation_number, "
         "bid_bond_information, payment_and_security_bond, maintenance_and_labor_bond, certified_checks, other_bonds."
@@ -307,7 +313,7 @@ EXTRACTION_FEW_SHOT: dict[str, str] = {
         "A site visit is pre_bid_deadline_date_time, NEVER municipal_meeting_date_time."
     ),
     "technical_requirements": (
-        "Example A — full address (preferred over bare city):\n"
+        "Example A — full address preferred over redundant bare city:\n"
         'Input: "IN THE CITY OF BELL GARDENS. Ford Park East Playground is located at '
         'John Anson Ford Park, 8000 Park Lane, Bell Gardens, CA 90201. Area approx 12,000 sq ft."\n'
         'Output: {"items": ['
@@ -319,8 +325,7 @@ EXTRACTION_FEW_SHOT: dict[str, str] = {
         '{"requirement": "project_square_footage: approx 12,000 sq ft", '
         '"label": "project_square_footage", "value": "approx 12,000 sq ft", '
         '"source_text": "Area approx 12,000 sq ft", "confidence": 0.9}]}\n'
-        'NOTE: "IN THE CITY OF BELL GARDENS" is a bare jurisdiction and is correctly OMITTED '
-        "because the full address above already contains the city.\n"
+        'NOTE: "IN THE CITY OF BELL GARDENS" may be omitted when the full address already includes the city.\n'
         "Example B — facility name + address (combine into one value):\n"
         'Input: "Union Hill Elementary School, 5242 South State Hwy ZZ, Republic, MO."\n'
         'Output: {"items": [{"requirement": "project_location: Union Hill Elementary School, 5242 South State Hwy ZZ, Republic, MO", '
@@ -350,6 +355,15 @@ EXTRACTION_FEW_SHOT: dict[str, str] = {
         'Output: {"items": [{"requirement": "project_location: Ford Park East Playground", '
         '"label": "project_location", "value": "Ford Park East Playground", '
         '"source_text": "Renovation of the Ford Park East Playground", "confidence": 0.8}]}\n'
+        "Example G — district / corridor + counties (keep both):\n"
+        'Input: "LOCATION: District 8 – 2026 Paint Striping. IN COUNTIES: BOYD, BROWN, CALDWELL."\n'
+        'Output: {"items": ['
+        '{"requirement": "project_location: District 8 – 2026 Paint Striping", '
+        '"label": "project_location", "value": "District 8 – 2026 Paint Striping", '
+        '"source_text": "LOCATION: District 8 – 2026 Paint Striping", "confidence": 0.95}, '
+        '{"requirement": "project_location: Counties: BOYD, BROWN, CALDWELL", '
+        '"label": "project_location", "value": "Counties: BOYD, BROWN, CALDWELL", '
+        '"source_text": "IN COUNTIES: BOYD, BROWN, CALDWELL", "confidence": 0.95}]}\n'
         "Allowed label values ONLY: project_location, project_square_footage."
     ),
     "scope_of_work": (

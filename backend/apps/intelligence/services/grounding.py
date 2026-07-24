@@ -95,7 +95,18 @@ def validate_and_score_items(
 
         requirement = str(raw.get("requirement") or "").strip()
         if not requirement:
-            continue
+            # LLMs often return label/value without requirement; synthesize so
+            # grounded items are not silently dropped.
+            label = str(raw.get("label") or "").strip()
+            value = str(
+                raw.get("value") or raw.get("date_time") or ""
+            ).strip()
+            if label and value:
+                requirement = f"{label}: {value}"
+                raw = dict(raw)
+                raw["requirement"] = requirement
+            else:
+                continue
 
         dedupe_key = _normalize(requirement)[:200]
         if dedupe_key in seen:

@@ -44,8 +44,10 @@ CELL_FONT = Font(size=10)
 MAX_EXPORT_DOCS = 100
 
 
-# Events (contextual notes) attached to date rows — exported as their own rows.
+# Events (contextual notes) attached to date / acquisition rows — exported
+# as their own rows when present.
 EVENT_FIELDS: list[tuple[str, str]] = [
+    ("project_document_acquisition_note", "Document acquisition — Events"),
     ("bid_deadline_date_time", "Bid deadline — Events"),
     ("bid_open_date_time", "Bid open — Events"),
     ("pre_bid_deadline_date_time", "Pre-bid — Events"),

@@ -30,7 +30,9 @@ _ACQUISITION_KEYWORDS = re.compile(
     r"\b("
     r"download|obtain|procurement\s+system|portal|website|http|https|"
     r"log\s*in|login|register|registration|contact|pick\s*up|pickup|"
-    r"available\s+at|office\s+at|request\s+documents|view\s+this\s+solicitation|"
+    r"available\s+at|available\s+via|available\s+on|office\s+at|"
+    r"request\s+documents|request\s+for\s+bidding|view\s+this\s+solicitation|"
+    r"bid\s*express|bidx|plan\s*room|planholder|bid\s*net|demandstar|bonfire|planetbids|"
     r"follow\s+this\s+\d+|470"
     r")\b",
     re.IGNORECASE,
@@ -299,7 +301,10 @@ def filter_invalid_metadata_rows(spec_check_fields: dict[str, Any]) -> None:
 
 
 _SOLICITATION_NUMBER_PATTERN = re.compile(
-    r"\b[A-Z0-9][-A-Z0-9]{3,}\b",  # at least 4-char alphanumeric code
+    r"(?:"
+    r"\b[A-Z0-9][-A-Z0-9./]{2,}\b"  # codes like AFE-H051, 81162, RFP-001
+    r"|\b\d{3,}\b"  # short numeric IDs (Call Order 800, etc.)
+    r")",
     re.IGNORECASE,
 )
 
@@ -332,15 +337,17 @@ def _is_solicitation_number(val: str) -> bool:
 
 
 def _merge_location_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Merge project_location rows: prefer the most complete value, drop any
-    candidate that is a subset of a more-complete kept value, keep distinct sites.
+    """Keep every distinct project_location (roads, counties, addresses, etc.).
+
+    Drop exact duplicates and values that are a strict subset of a longer kept
+    value. Do NOT collapse everything to a single 'best' address — multi-site
+    and multi-descriptor locations must all remain visible.
     """
     matching = [r for r in rows if str(r.get("field_key") or "") == "project_location"]
     if len(matching) <= 1:
         return rows
     others = [r for r in rows if str(r.get("field_key") or "") != "project_location"]
 
-    # Rank candidates: most complete first; tie broken by existing quality key.
     ranked = sorted(
         matching,
         key=lambda r: (
@@ -357,13 +364,27 @@ def _merge_location_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         norm = re.sub(r"\s+", " ", val.lower())
         # Drop if this value is a literal subset of an already-kept value.
-        if any(norm in re.sub(r"\s+", " ", k.lower()) for k in kept_values):
+        if any(
+            norm == re.sub(r"\s+", " ", k.lower())
+            or norm in re.sub(r"\s+", " ", k.lower())
+            for k in kept_values
+        ):
             continue
-        # Drop a bare city/jurisdiction once ANY more-specific location is kept —
-        # a road segment or building name (score 0 but NOT a bare jurisdiction) is
-        # a distinct site and must be kept.
-        if _is_bare_jurisdiction(val) and kept_values:
+        # Bare "City of X" is redundant once a more-specific site/address is kept.
+        # Counties, roads, districts, bridges, etc. are NOT bare jurisdictions.
+        if _is_bare_jurisdiction(val) and any(
+            _address_completeness_score(k) > 0 for k in kept_values
+        ):
             continue
+        # If a previously kept shorter value is a subset of this one, replace it.
+        kept_values = [
+            k
+            for k in kept_values
+            if not (
+                re.sub(r"\s+", " ", k.lower()) != norm
+                and re.sub(r"\s+", " ", k.lower()) in norm
+            )
+        ]
         kept_values.append(val)
 
     if not kept_values:
@@ -373,15 +394,38 @@ def _merge_location_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     fdef = FIELD_DEFS.get("project_location")
     label = fdef.display_label if fdef else "Project location"
     merged = dict(winner)
+    # Semicolon so the UI renders a numbered multi-value list.
     merged["text"] = f"{label}: {'; '.join(kept_values)}"
     merged["field_key"] = "project_location"
     return others + [merged]
+
+
+def _solicitation_code_only(val: str) -> str:
+    """Strip 'Label: ' prefixes so UI shows only the ID code."""
+    v = (val or "").strip()
+    if ": " not in v:
+        return v
+    left, right = v.split(": ", 1)
+    # Keep URLs / long prose intact; strip short ID labels only.
+    if len(left) <= 40 and not left.lower().startswith("http") and right.strip():
+        return right.strip()
+    return v
 
 
 def merge_spec_check_multi_fields(spec_check_fields: dict[str, Any]) -> None:
     """Merge multi-row spec fields into single canonical rows."""
     meta = spec_check_fields.get("project_metadata_items") or []
     if isinstance(meta, list):
+        # Normalize solicitation rows to code-only values before merge.
+        for row in meta:
+            if str(row.get("field_key") or "") != "project_solicitation_number":
+                continue
+            code = _solicitation_code_only(_row_display_value(row))
+            if not code:
+                continue
+            fdef = FIELD_DEFS.get("project_solicitation_number")
+            label = fdef.display_label if fdef else "Project solicitation number"
+            row["text"] = f"{label}: {code}"
         meta = _merge_rows_by_field_key(
             meta, "project_solicitation_number", joiner="; ",
             value_filter=_is_solicitation_number,

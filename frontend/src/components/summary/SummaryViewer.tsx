@@ -144,7 +144,7 @@ function EmptySection() {
   return <p className="text-sm italic text-ink-muted">{NOT_FOUND}</p>;
 }
 
-function ProjectValueInputRow({
+function ProjectValueInput({
   onCalculate,
 }: {
   onCalculate: (rawInput: string) => void;
@@ -152,36 +152,28 @@ function ProjectValueInputRow({
   const [input, setInput] = useState("");
 
   return (
-    <li className="py-3 first:pt-0 last:pb-0">
-      <div className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium text-ink">
-          Project value{" "}
-          <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
-            Not in document
-          </span>
-        </span>
-        <p className="text-xs text-ink-muted">
-          Enter the value or range to calculate the estimated project start date.
-        </p>
-        <div className="mt-1 flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="e.g. $1,200,000 or $500K–$1.5M"
-            className="flex-1 rounded border border-surface-border bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-          <button
-            type="button"
-            disabled={!input.trim()}
-            onClick={() => onCalculate(input)}
-            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40 hover:bg-accent/90 transition-colors"
-          >
-            Calculate start date
-          </button>
-        </div>
+    <div className="mt-2 flex flex-col gap-1.5">
+      <p className="text-xs text-ink-muted">
+        Enter the value or range to calculate the estimated project start date.
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="e.g. $1,200,000 or $500K–$1.5M"
+          className="flex-1 rounded border border-surface-border bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent"
+        />
+        <button
+          type="button"
+          disabled={!input.trim()}
+          onClick={() => onCalculate(input)}
+          className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40 hover:bg-accent/90 transition-colors"
+        >
+          Calculate start date
+        </button>
       </div>
-    </li>
+    </div>
   );
 }
 
@@ -231,6 +223,16 @@ const CANONICAL_DATE_FIELDS: { key: string; label: string }[] = [
   { key: "project_end_date_time", label: "Project end date" },
 ];
 
+/** Date fields that always show an Events block (found or Not found). */
+const EVENT_DATE_FIELD_KEYS = new Set([
+  "bid_deadline_date_time",
+  "bid_open_date_time",
+  "pre_bid_deadline_date_time",
+  "site_visit_date_time",
+  "question_deadline_date_time",
+  "municipal_meeting_date_time",
+]);
+
 function withMissingDatePlaceholders(
   dates: SummarySectionBlock[]
 ): SummarySectionBlock[] {
@@ -250,7 +252,27 @@ function withMissingDatePlaceholders(
       _not_found: true,
     })
   );
-  return [...dates, ...placeholders];
+  // Rows that only have Events (no calendar date) stay as not-found shells.
+  const normalized = dates.map((d) =>
+    !d.date && !d._calculated && (d._note || EVENT_DATE_FIELD_KEYS.has(d.field_key ?? ""))
+      ? { ...d, _not_found: true }
+      : d
+  );
+  return [...normalized, ...placeholders];
+}
+
+function dateEventsFootnote(item: SummarySectionBlock) {
+  const key = item.field_key ?? "";
+  if (!EVENT_DATE_FIELD_KEYS.has(key)) return null;
+  const note = (item._note ?? "").trim();
+  return (
+    <EventsBlock
+      fieldKey={key || "date"}
+      text={note}
+      sources={item._note_sources}
+      notFound={!note}
+    />
+  );
 }
 
 function SpecDatesList({
@@ -265,15 +287,27 @@ function SpecDatesList({
     <SummaryContentBox>
       <ul className="divide-y divide-surface-border/80">
         {allDates.map((item, i) => {
-          if (item._not_found) {
-            // Feedback stays available: the user can confirm the field is
-            // truly absent, or mark it wrong and supply the real value.
+          const eventsFootnote = dateEventsFootnote(item);
+          const dateMissing =
+            Boolean(item._not_found) ||
+            (!item.date && !item._calculated);
+
+          if (dateMissing) {
+            // Date absent — Events may still be present or also Not found.
             return (
               <li key={i} className="py-3 first:pt-0 last:pb-0">
                 <SpecFieldRow
-                  item={item}
+                  item={{ ...item, _not_found: true }}
                   extractionType="submission_deadlines"
                   notFound
+                  labelBadge={
+                    item._mandatory === true ? (
+                      <span className="mr-1 rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">
+                        Mandatory
+                      </span>
+                    ) : undefined
+                  }
+                  footnote={eventsFootnote}
                 />
               </li>
             );
@@ -308,6 +342,7 @@ function SpecDatesList({
                           Enter project value above to refine this estimate.
                         </p>
                       )}
+                      {eventsFootnote}
                     </>
                   }
                 />
@@ -332,15 +367,7 @@ function SpecDatesList({
                     </span>
                   ) : undefined
                 }
-                footnote={
-                  item._note ? (
-                    <EventsBlock
-                      fieldKey={item.field_key ?? "date"}
-                      text={item._note}
-                      sources={item._note_sources}
-                    />
-                  ) : null
-                }
+                footnote={eventsFootnote}
               />
             </li>
           );
@@ -417,23 +444,48 @@ export function SummaryViewer({ data }: { data: GeneratedSummaryData }) {
         <SummaryContentBox>
           <ul className="divide-y divide-surface-border/80">
             {withMissingFieldPlaceholders(metadataItems, METADATA_FIELDS).map(
-              (item, i) => (
-                <li key={i} className="py-3 first:pt-0 last:pb-0">
-                  <SpecFieldRow
-                    item={item}
+              (item, i) => {
+                const isMissingProjectValue =
+                  item.field_key === "project_value" && !docHasProjectValue;
+                const isAcquisition =
+                  item.field_key === "project_document_acquisition_note";
+                const acquisitionNote = (item._note ?? "").trim();
+                const eventsNote = isAcquisition ? (
+                  <EventsBlock
+                    fieldKey="project_document_acquisition_note"
+                    text={acquisitionNote}
+                    sources={item._note_sources}
                     extractionType="eligibility_criteria"
-                    notFound={Boolean(item._not_found)}
-                    confidenceBadge={
-                      item._not_found ? undefined : (
-                        <FieldConfidenceBadge confidence={item.confidence} />
-                      )
-                    }
+                    notFound={!acquisitionNote}
                   />
-                </li>
-              )
-            )}
-            {!docHasProjectValue && (
-              <ProjectValueInputRow onCalculate={handleCalculate} />
+                ) : null;
+                const valueInput = isMissingProjectValue ? (
+                  <ProjectValueInput onCalculate={handleCalculate} />
+                ) : null;
+                const footnote =
+                  eventsNote || valueInput ? (
+                    <>
+                      {eventsNote}
+                      {valueInput}
+                    </>
+                  ) : null;
+
+                return (
+                  <li key={i} className="py-3 first:pt-0 last:pb-0">
+                    <SpecFieldRow
+                      item={item}
+                      extractionType="eligibility_criteria"
+                      notFound={Boolean(item._not_found)}
+                      confidenceBadge={
+                        item._not_found ? undefined : (
+                          <FieldConfidenceBadge confidence={item.confidence} />
+                        )
+                      }
+                      footnote={footnote}
+                    />
+                  </li>
+                );
+              }
             )}
           </ul>
         </SummaryContentBox>

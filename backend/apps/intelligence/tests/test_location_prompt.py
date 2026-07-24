@@ -4,13 +4,12 @@ from apps.intelligence.prompts.templates import (
 )
 
 
-def test_location_instruction_states_specificity_rules():
+def test_location_instruction_states_all_location_types():
     instr = EXTRACTION_TYPE_INSTRUCTIONS["technical_requirements"].lower()
-    # Must tell the model to prefer the most specific location.
-    assert "most specific" in instr
-    # Bare city is a fallback only.
-    assert "fallback" in instr
-    # Distinct sites emitted separately.
+    assert "every distinct" in instr
+    assert "counties" in instr
+    assert "bridge" in instr
+    assert "point-to-point" in instr or "milepost" in instr
     assert "distinct" in instr
 
 
@@ -23,8 +22,9 @@ def test_location_few_shot_covers_taxonomy():
     assert "from" in lower and "to" in lower
     # Point-to-point example present.
     assert "between" in lower
-    # Negative case: bare city alongside full address -> address only.
-    assert "city of" in lower
+    # District + counties example present.
+    assert "district 8" in lower
+    assert "counties" in lower
     # Allowed labels unchanged.
     assert "project_location" in shot
     assert "project_square_footage" in shot
