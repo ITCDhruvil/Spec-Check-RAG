@@ -7,7 +7,7 @@ import { usePdfNavigation } from "@/lib/pdfNavigationContext";
 const PREVIEW_COLLAPSED_KEY = "document-preview-collapsed";
 
 interface SplitPanelLayoutProps {
-  header: ReactNode;
+  header?: ReactNode;
   left: ReactNode;
   right: ReactNode;
   rightTitle?: string;
@@ -28,8 +28,13 @@ export function SplitPanelLayout({
 }: SplitPanelLayoutProps) {
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  const { setCanJump, registerExpandPreview, unregisterExpandPreview } =
-    usePdfNavigation();
+  const {
+    setCanJump,
+    registerExpandPreview,
+    unregisterExpandPreview,
+    registerCollapsePreview,
+    unregisterCollapsePreview,
+  } = usePdfNavigation();
 
   useEffect(() => {
     setPreviewCollapsed(readCollapsedPreference());
@@ -49,15 +54,19 @@ export function SplitPanelLayout({
     if (!rightCollapsible) return;
     setCanJump(true);
     registerExpandPreview(() => setCollapsed(false));
+    registerCollapsePreview(() => setCollapsed(true));
     return () => {
       setCanJump(false);
       unregisterExpandPreview();
+      unregisterCollapsePreview();
     };
   }, [
     rightCollapsible,
     setCanJump,
     registerExpandPreview,
     unregisterExpandPreview,
+    registerCollapsePreview,
+    unregisterCollapsePreview,
     setCollapsed,
   ]);
 
@@ -65,9 +74,11 @@ export function SplitPanelLayout({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 border-b border-surface-border bg-surface px-6 py-4">
-        {header}
-      </div>
+      {header && (
+        <div className="shrink-0 border-b border-surface-border bg-surface px-6 py-4">
+          {header}
+        </div>
+      )}
 
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
@@ -81,33 +92,6 @@ export function SplitPanelLayout({
 
           {showPreview && (
             <div className="flex min-h-0 flex-col overflow-hidden px-6 py-4">
-              {rightCollapsible && (
-                <div className="mb-2 flex shrink-0 items-center justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setCollapsed(true)}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-surface-border bg-surface px-2.5 py-1 text-xs font-medium text-ink-muted transition-colors hover:border-accent/40 hover:bg-accent/5 hover:text-accent"
-                    aria-expanded
-                    aria-controls="document-preview-panel"
-                  >
-                    <svg
-                      className="h-3.5 w-3.5"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.75"
-                      aria-hidden
-                    >
-                      <path
-                        d="M10 4l4 4-4 4M14 8H2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                    Hide preview
-                  </button>
-                </div>
-              )}
               <div
                 id="document-preview-panel"
                 className="min-h-0 flex-1 overflow-hidden"

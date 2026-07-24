@@ -68,6 +68,7 @@ class AdaptiveLexiconBuildTests(SimpleTestCase):
         INTELLIGENCE_ADAPTIVE_LEXICON_ENABLED=True,
         INTELLIGENCE_ADAPTIVE_LEXICON_LLM=True,
         INTELLIGENCE_LEARNED_LEXICON_ENABLED=False,
+        INTELLIGENCE_FAST_MODE=False,  # fast mode short-circuits the LLM path
     )
     @patch("apps.intelligence.services.adaptive_lexicon_service.OpenAIService")
     def test_build_merges_llm_terms(self, mock_openai_cls):
@@ -92,7 +93,10 @@ class AdaptiveLexiconBuildTests(SimpleTestCase):
 
 
 class AdaptiveKeywordScoringTests(SimpleTestCase):
-    @override_settings(INTELLIGENCE_ADAPTIVE_LEXICON_ENABLED=True)
+    @override_settings(
+        INTELLIGENCE_ADAPTIVE_LEXICON_ENABLED=True,
+        INTELLIGENCE_FAST_MODE=False,  # fast mode shrinks chunk selection size
+    )
     def test_adaptive_terms_boost_keyword_selection(self):
         from apps.intelligence.services.extraction_service import ExtractionService
 

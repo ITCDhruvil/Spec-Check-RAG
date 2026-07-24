@@ -114,6 +114,7 @@ class ExtractedContentSummarySerializer(serializers.ModelSerializer):
 
 class DocumentListSerializer(serializers.ModelSerializer):
     tender_reference = serializers.SerializerMethodField()
+    tender_title = serializers.SerializerMethodField()
     version_label = serializers.SerializerMethodField()
 
     class Meta:
@@ -124,7 +125,9 @@ class DocumentListSerializer(serializers.ModelSerializer):
             "mime_type",
             "size_bytes",
             "status",
+            "marked_done",
             "tender_reference",
+            "tender_title",
             "version_label",
             "created_at",
             "updated_at",
@@ -134,6 +137,14 @@ class DocumentListSerializer(serializers.ModelSerializer):
         if hasattr(obj, "version") and obj.version:
             return obj.version.tender.reference_code
         return obj.metadata.get("tender_reference")
+
+    def get_tender_title(self, obj: Document) -> str | None:
+        if hasattr(obj, "version") and obj.version:
+            title = obj.version.tender.title
+            # Auto-generated titles mirror the reference code — not a real title.
+            if title and title != obj.version.tender.reference_code:
+                return title
+        return None
 
     def get_version_label(self, obj: Document) -> str | None:
         if hasattr(obj, "version") and obj.version:

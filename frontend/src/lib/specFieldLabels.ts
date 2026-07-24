@@ -1,3 +1,5 @@
+import { formatDeadlineDate } from "@/lib/deadlineDisplay";
+
 /** Display labels mirroring backend spec_check_fields_registry FIELD_DEFS. */
 export const SPEC_FIELD_LABELS: Record<string, string> = {
   project_name: "Project name",
@@ -24,6 +26,8 @@ export const SPEC_FIELD_LABELS: Record<string, string> = {
   site_visit_date_time: "Site visit",
   question_deadline_date_time: "Question deadline",
   municipal_meeting_date_time: "Award date",
+  // Single common set-aside field; legacy per-program keys kept for old summaries.
+  set_aside: "Set-aside",
   set_aside_mbe: "MBE",
   set_aside_wbe: "WBE",
   set_aside_dbe: "DBE",
@@ -57,15 +61,25 @@ export function resolveFieldLabel(
 }
 
 export function resolveFieldValue(
-  item: { text?: string; item?: string; date?: string | null },
+  item: { field_key?: string; text?: string; item?: string; date?: string | null },
   useDateAsValue = false
 ): string {
   if (useDateAsValue && item.date) {
-    return String(item.date);
+    return formatDeadlineDate(item.date) ?? String(item.date);
   }
   const raw = (item.text ?? item.item ?? "").trim();
   if (raw.includes(": ")) {
-    return raw.split(": ", 2)[1]?.trim() ?? raw;
+    // Strip the "Label: " prefix only when it actually is the field's label —
+    // values like "MBE: 10% participation goal" must keep their own colon text.
+    const [prefix, rest] = [
+      raw.split(": ", 2)[0]?.trim() ?? "",
+      raw.slice(raw.indexOf(": ") + 2).trim(),
+    ];
+    const knownLabel = item.field_key ? SPEC_FIELD_LABELS[item.field_key] : undefined;
+    if (!knownLabel || prefix.toLowerCase() === knownLabel.toLowerCase()) {
+      return rest || raw;
+    }
+    return raw;
   }
   return raw;
 }

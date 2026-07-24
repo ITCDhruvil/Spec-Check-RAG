@@ -80,6 +80,14 @@ apiClient.interceptors.response.use(
       error.response?.data?.error?.message ??
       error.message ??
       "An unexpected error occurred";
-    return Promise.reject(new Error(message));
+    const wrapped = new Error(message) as Error & {
+      status?: number;
+      data?: unknown;
+    };
+    // Preserve status + payload so callers can handle structured errors
+    // (e.g. 409 duplicate-document with existing-document info).
+    wrapped.status = error.response?.status;
+    wrapped.data = error.response?.data;
+    return Promise.reject(wrapped);
   }
 );

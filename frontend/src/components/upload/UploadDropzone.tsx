@@ -65,7 +65,7 @@ export function UploadDropzone({
       onDrop={onDrop}
       className={`rounded-lg border-2 border-dashed p-10 text-center transition ${
         dragActive
-          ? "border-accent bg-blue-50/40"
+          ? "border-accent bg-accent/10"
           : "border-surface-border bg-surface"
       } ${disabled ? "opacity-60" : ""}`}
     >
@@ -84,7 +84,7 @@ export function UploadDropzone({
           }}
         />
       </label>
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
     </div>
   );
 }

@@ -62,11 +62,16 @@ def embedding_dimensions(model: str | None = None) -> int:
     if explicit:
         return int(explicit)
 
+    # An explicitly passed model name wins over the configured Azure deployment.
+    if model:
+        lowered = model.lower()
+        return 3072 if ("large" in lowered or "3072" in lowered) else 1536
+
     azure_embed = getattr(settings, "AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "") or ""
     if "large" in azure_embed.lower():
         return 3072
 
-    name = (model or settings.OPENAI_EMBEDDING_MODEL or "").lower()
+    name = (settings.OPENAI_EMBEDDING_MODEL or "").lower()
     if "large" in name or "3072" in name:
         return 3072
     return 1536

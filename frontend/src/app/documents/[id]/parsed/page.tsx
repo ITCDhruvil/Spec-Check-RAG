@@ -21,9 +21,9 @@ function qualityLabel(score: number): string {
 }
 
 function qualityClass(score: number): string {
-  if (score >= 0.85) return "text-emerald-700 bg-emerald-50";
-  if (score >= 0.6) return "text-amber-800 bg-amber-50";
-  return "text-red-800 bg-red-50";
+  if (score >= 0.85) return "text-emerald-700 bg-emerald-100 dark:text-emerald-300 dark:bg-emerald-500/10";
+  if (score >= 0.6) return "text-amber-800 bg-amber-100 dark:text-amber-300 dark:bg-amber-500/10";
+  return "text-red-700 bg-red-100 dark:text-red-300 dark:bg-red-500/10";
 }
 
 export default function ParsedDocumentPage() {

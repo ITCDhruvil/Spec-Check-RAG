@@ -5,8 +5,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { AdminNotePanel } from "@/components/summary/AdminNotePanel";
 import { Modal } from "@/components/ui/Modal";
 import { deleteDocument } from "@/lib/api/documents";
+import { truncateFilename } from "@/lib/truncate";
 import type { DocumentListItem } from "@/lib/types/document";
 
 const MENU_WIDTH = 240;
@@ -47,6 +49,24 @@ function ChatIcon() {
   );
 }
 
+function SearchIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M21 21l-4.3-4.3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function NoteIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M11 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2v-5" />
+      <path d="M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  );
+}
+
 function TrashIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -75,6 +95,17 @@ function buildLinkActions(doc: DocumentListItem): LinkAction[] {
   ];
 
   if (isReady) {
+    actions.push({
+      kind: "link",
+      label: "Manual search",
+      href: `${base}/manual`,
+      icon: <SearchIcon />,
+    });
+  }
+
+  // Temporarily hidden from UI; keep chat route available to re-enable.
+  const SHOW_ASK_QUESTIONS = false;
+  if (SHOW_ASK_QUESTIONS && isReady) {
     actions.push({
       kind: "link",
       label: "Ask questions",
@@ -107,6 +138,7 @@ export function DocumentActionsMenu({ doc }: { doc: DocumentListItem }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
   const [coords, setCoords] = useState<MenuCoords | null>(null);
   const [mounted, setMounted] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -199,14 +231,30 @@ export function DocumentActionsMenu({ doc }: { doc: DocumentListItem }) {
               </Link>
             </li>
           ))}
+          <li role="none">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                setNoteOpen(true);
+              }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-ink transition hover:bg-surface-muted"
+            >
+              <IconButton>
+                <NoteIcon />
+              </IconButton>
+              <span>Admin note</span>
+            </button>
+          </li>
           <li role="none" className="mt-0.5 border-t border-surface-border">
             <button
               type="button"
               role="menuitem"
               onClick={openDeleteConfirm}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-red-700 transition hover:bg-red-50"
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
             >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-red-50 text-red-700">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400">
                 <TrashIcon />
               </span>
               <span>Delete document</span>
@@ -237,6 +285,23 @@ export function DocumentActionsMenu({ doc }: { doc: DocumentListItem }) {
       {mounted && menu ? createPortal(menu, document.body) : null}
 
       <Modal
+        open={noteOpen}
+        onClose={() => setNoteOpen(false)}
+        blurBackdrop
+        maxWidth="max-w-2xl"
+      >
+        <div className="px-3 pb-3 pt-3">
+          {noteOpen && (
+            <AdminNotePanel
+              documentId={doc.id}
+              bare
+              docName={truncateFilename(doc.tender_title || doc.original_filename, 48)}
+            />
+          )}
+        </div>
+      </Modal>
+
+      <Modal
         open={confirmDelete}
         onClose={() => {
           if (!deleteMutation.isPending) setConfirmDelete(false);
@@ -251,7 +316,7 @@ export function DocumentActionsMenu({ doc }: { doc: DocumentListItem }) {
           </p>
 
           {deleteMutation.isError && (
-            <p className="text-sm text-red-700">
+            <p className="text-sm text-red-600 dark:text-red-300">
               {(deleteMutation.error as Error).message}
             </p>
           )}

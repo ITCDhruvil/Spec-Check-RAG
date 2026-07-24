@@ -34,6 +34,10 @@ interface PdfNavigationContextValue {
   /** Register a callback that expands the (collapsible) preview panel. */
   registerExpandPreview: (fn: () => void) => void;
   unregisterExpandPreview: () => void;
+  /** Collapse handler for the preview panel; null when not collapsible. */
+  collapsePreview: (() => void) | null;
+  registerCollapsePreview: (fn: () => void) => void;
+  unregisterCollapsePreview: () => void;
   previewContainerRef: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -52,6 +56,9 @@ const PdfNavigationContext = createContext<PdfNavigationContextValue>({
   unregisterScrollToCitation: () => {},
   registerExpandPreview: () => {},
   unregisterExpandPreview: () => {},
+  collapsePreview: null,
+  registerCollapsePreview: () => {},
+  unregisterCollapsePreview: () => {},
   previewContainerRef: { current: null },
 });
 
@@ -100,6 +107,20 @@ export function PdfNavigationProvider({
 
   const unregisterExpandPreview = useCallback(() => {
     expandPreviewRef.current = null;
+  }, []);
+
+  // State (not ref): consumers render a "Hide preview" button only while a
+  // collapse handler is registered, so availability must be reactive.
+  const [collapsePreview, setCollapsePreview] = useState<(() => void) | null>(
+    null
+  );
+
+  const registerCollapsePreview = useCallback((fn: () => void) => {
+    setCollapsePreview(() => fn);
+  }, []);
+
+  const unregisterCollapsePreview = useCallback(() => {
+    setCollapsePreview(null);
   }, []);
 
   const applyHighlight = useCallback((target: CitationHighlightTarget) => {
@@ -167,6 +188,9 @@ export function PdfNavigationProvider({
       unregisterScrollToCitation,
       registerExpandPreview,
       unregisterExpandPreview,
+      collapsePreview,
+      registerCollapsePreview,
+      unregisterCollapsePreview,
       previewContainerRef,
     }),
     [
@@ -182,6 +206,9 @@ export function PdfNavigationProvider({
       unregisterScrollToCitation,
       registerExpandPreview,
       unregisterExpandPreview,
+      collapsePreview,
+      registerCollapsePreview,
+      unregisterCollapsePreview,
     ]
   );
 

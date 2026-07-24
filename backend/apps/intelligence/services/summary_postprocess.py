@@ -109,17 +109,37 @@ def _parse_dollar_amount(text: str) -> float | None:
     Handles suffixes: K/thousand, M/million, B/billion.
     """
     amounts: list[float] = []
+    # "$1.2M", "$500,000" — and "2.5 million dollars" / "1,500,000.00 USD" without a $ sign.
     pattern = re.compile(
-        r"\$\s*([\d,]+(?:\.\d+)?)\s*(million|M|billion|B|thousand|K)?",
+        r"(?:\$\s*([\d,]+(?:\.\d+)?)\s*(million|M|billion|B|thousand|K)?"
+        r"|([\d,]+(?:\.\d+)?)\s*(million|billion|thousand)?\s*(?:dollars|USD)\b"
+        r"|([\d,]+(?:\.\d+)?)\s+(million|billion|thousand)\s+dollars?\b)",
         re.IGNORECASE,
     )
+    _WORD_AMOUNTS = {
+        "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+        "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    }
+    # "One Million Dollars" / "Two Million Dollars" (spelled-out small counts)
+    word_m = re.search(
+        r"\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+(million|billion|thousand)\s+dollars?\b",
+        text,
+        re.IGNORECASE,
+    )
+    if word_m:
+        base = float(_WORD_AMOUNTS[word_m.group(1).lower()])
+        mult = {"thousand": 1e3, "million": 1e6, "billion": 1e9}[word_m.group(2).lower()]
+        amounts.append(base * mult)
+
     for match in pattern.finditer(text):
-        raw = match.group(1).replace(",", "")
+        raw = match.group(1) or match.group(3) or match.group(5)
+        if not raw:
+            continue
         try:
-            val = float(raw)
+            val = float(raw.replace(",", ""))
         except ValueError:
             continue
-        suffix = (match.group(2) or "").lower()
+        suffix = (match.group(2) or match.group(4) or match.group(6) or "").lower()
         if suffix in ("m", "million"):
             val *= 1_000_000
         elif suffix in ("b", "billion"):
@@ -130,6 +150,11 @@ def _parse_dollar_amount(text: str) -> float | None:
     return max(amounts) if amounts else None
 
 
+_MONTH_RE = re.compile(
+    r"^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)", re.IGNORECASE
+)
+
+
 def _parse_date_string(date_str: str) -> datetime | None:
     """Parse common US tender date strings to a datetime; returns None if unparseable."""
     if not date_str:
@@ -137,6 +162,22 @@ def _parse_date_string(date_str: str) -> datetime | None:
     cleaned = re.sub(r"\s+", " ", date_str.strip())
     # Strip trailing "(estimated …)" notes added by our own post-processor
     cleaned = re.sub(r"\s*\(estimated[^)]*\)", "", cleaned, flags=re.IGNORECASE).strip()
+    # Strip weekday prefix: "Wednesday, March 11, 2026" → "March 11, 2026"
+    cleaned = re.sub(
+        r"^(Mon|Tues?|Wed(?:nes)?|Thur?s?|Fri|Satur?|Sun)(day)?,?\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+    # Strip ordinal suffixes: "March 11th, 2026" → "March 11, 2026"
+    cleaned = re.sub(r"(\d{1,2})(st|nd|rd|th)\b", r"\1", cleaned, flags=re.IGNORECASE)
+    # Strip trailing "local time" / "prevailing time" qualifiers
+    cleaned = re.sub(
+        r",?\s*(local|prevailing|eastern|central|mountain|pacific)\s+time\b\.?",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
     # Normalise ISO 8601 datetime: "2026-02-25T15:00:00[-08:00]" → "2026-02-25 15:00:00"
     cleaned = re.sub(r"T(\d{2}:\d{2}:\d{2})([+-]\d{2}:\d{2}|Z)?$", r" \1", cleaned).strip()
     # Replace "@" separator used in some RFPs: "3/06/2026 @ 3:00 P.M. PST" → "3/06/2026 3:00 P.M. PST"
@@ -180,6 +221,13 @@ def _parse_date_string(date_str: str) -> datetime | None:
     if time_on_date:
         cleaned = time_on_date.group(1).strip()
         cleaned_date_only = cleaned
+    # "10:00 AM, March 11, 2026" — time-first with comma: extract the date portion
+    time_comma_date = re.match(
+        r"^\d{1,2}:\d{2}\s*[APap][Mm],?\s+(.+)$", cleaned
+    )
+    if time_comma_date and _MONTH_RE.match(time_comma_date.group(1)):
+        cleaned = time_comma_date.group(1).strip()
+        cleaned_date_only = cleaned
 
     for text, fmt in (
         (cleaned, "%B %d, %Y at %I:%M %p"),
@@ -195,11 +243,22 @@ def _parse_date_string(date_str: str) -> datetime | None:
         (cleaned_date_only, "%b %d, %Y"),
         (cleaned_date_only, "%m/%d/%Y"),
         (cleaned_date_only, "%Y-%m-%d"),
+        # Additional real-world tender formats
+        (cleaned_date_only, "%B %d %Y"),    # "March 11 2026" (no comma)
+        (cleaned_date_only, "%d %B %Y"),    # "11 March 2026" (day-first)
+        (cleaned_date_only, "%d %b %Y"),    # "11 Mar 2026"
+        (cleaned_date_only, "%m-%d-%Y"),    # "03-11-2026"
+        (cleaned_date_only, "%Y/%m/%d"),    # "2026/03/11"
+        (cleaned_date_only, "%m/%d/%y"),    # "3/11/26" (2-digit year)
     ):
         try:
-            return datetime.strptime(text, fmt)
+            parsed = datetime.strptime(text, fmt)
         except ValueError:
             continue
+        # 2-digit years: strptime maps 26 → 2026, but guard against 1900s results.
+        if parsed.year < 100:
+            parsed = parsed.replace(year=parsed.year + 2000)
+        return parsed
     return None
 
 
@@ -238,10 +297,25 @@ def _duration_to_datetime(duration_text: str, start_dt: datetime) -> datetime | 
         return None  # Already a real calendar date — skip
 
     lower = duration_text.lower()
+    # "One hundred eighty (180) calendar days" — trust the parenthesised numeral.
+    lower = re.sub(r"[a-z\- ]+\((\d+)\)", r"\1", lower)
+    # Spelled-out single-word counts: "one year", "two years", "six months".
+    _WORDS = {
+        "one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
+        "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10",
+        "eleven": "11", "twelve": "12",
+    }
+    lower = re.sub(
+        r"\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b(?=\s+(?:calendar\s+|working\s+|business\s+|consecutive\s+)?(?:days?|weeks?|months?|mos\b|years?))",
+        lambda m: _WORDS[m.group(1)],
+        lower,
+    )
 
-    day_m = re.search(r"(\d+(?:\.\d+)?)\s*(?:calendar\s+|working\s+|business\s+)?days?", lower)
+    day_m = re.search(
+        r"(\d+(?:\.\d+)?)\s*(?:calendar\s+|working\s+|business\s+|consecutive\s+)*days?", lower
+    )
     week_m = re.search(r"(\d+(?:\.\d+)?)\s*weeks?", lower)
-    month_m = re.search(r"(\d+(?:\.\d+)?)\s*months?", lower)
+    month_m = re.search(r"(\d+(?:\.\d+)?)\s*(?:months?|mos\b)", lower)
     year_m = re.search(r"(\d+(?:\.\d+)?)\s*years?", lower)
 
     if day_m:
@@ -403,11 +477,41 @@ def _apply_start_date_rule(spec_check_fields: dict[str, Any], dates: list[dict])
     spec_check_fields["project_dates"] = dates
 
 
+def _attach_date_notes(spec_check_fields: dict[str, Any]) -> None:
+    """Attach contextual notes to their date rows — after the date rules so
+    derived rows (e.g. bid_open copied from bid_deadline) can't clobber them."""
+    notes = spec_check_fields.pop("_date_notes", None)
+    if not isinstance(notes, dict) or not notes:
+        return
+    dates = spec_check_fields.get("project_dates") or []
+    for target_key, note in notes.items():
+        row = next((d for d in dates if d.get("field_key") == target_key), None)
+        if row is None:
+            continue
+        note_text = str(note.get("text") or "").strip()
+        if not note_text:
+            continue
+        row["_note"] = note_text
+        # Mandatory badge — only meaningful for events one attends.
+        if target_key in ("pre_bid_deadline_date_time", "site_visit_date_time"):
+            lowered = note_text.lower()
+            if lowered.startswith("mandatory"):
+                row["_mandatory"] = True
+            elif lowered.startswith("non-mandatory") or lowered.startswith("not mandatory"):
+                row["_mandatory"] = False
+        source = note.get("source")
+        if source:
+            # Kept separate from the date's own sources so the Events block
+            # shows its own citation (and jump target).
+            row["_note_sources"] = [source]
+
+
 def finalize_spec_check_fields(spec_check_fields: dict[str, Any]) -> list[dict[str, Any]]:
     """Date rules, post-rules, per-field confidence, and date validation."""
     if not isinstance(spec_check_fields, dict):
         return []
     _apply_spec_check_date_rules(spec_check_fields)
+    _attach_date_notes(spec_check_fields)
     warnings = apply_spec_check_postrules(spec_check_fields)
     apply_confidence_to_spec_check_fields(spec_check_fields)
     date_warnings = validate_date_ordering(spec_check_fields)
@@ -463,6 +567,17 @@ def validate_date_ordering(spec_check_fields: dict[str, Any]) -> list[dict[str, 
     _flag("project_start_date_time", "project_end_date_time",
           "Project start date is after project end date — dates may be swapped.")
     return warnings
+
+
+# Extraction *_note label → the date field_key its note attaches to.
+DATE_NOTE_TARGETS: dict[str, str] = {
+    "bid_deadline_note": "bid_deadline_date_time",
+    "bid_open_note": "bid_open_date_time",
+    "pre_bid_note": "pre_bid_deadline_date_time",
+    "site_visit_note": "site_visit_date_time",
+    "question_deadline_note": "question_deadline_date_time",
+    "award_note": "municipal_meeting_date_time",
+}
 
 
 _AFTER_AWARD_RE = re.compile(
@@ -566,6 +681,9 @@ def _apply_spec_check_date_rules(spec_check_fields: dict[str, Any]) -> None:
             bid_open = copy.deepcopy(bid_deadline)
             bid_open["text"] = "Bid open date"
             bid_open["field_key"] = field_key_for_deadline_label("Bid open date")
+            # The copied row must not inherit the deadline's contextual note.
+            bid_open.pop("_note", None)
+            bid_open.pop("_mandatory", None)
             dates.append(bid_open)
             spec_check_fields["project_dates"] = dates
 
@@ -781,6 +899,11 @@ def build_spec_check_fields_from_insights(insights: list) -> dict[str, Any]:
                 return True
         return False
 
+    # Contextual notes around each date event (location / online details,
+    # contact person, mandatory-or-not, instructions) — attached to their
+    # date row below rather than shown as their own date rows.
+    note_items: dict[str, dict[str, Any]] = {}
+
     for item in by_type.get("submission_deadlines", []):
         # Some extraction items may omit the explicit `label` field but still use
         # requirement format "<label>: <date>". Fall back to parsing it so we
@@ -788,6 +911,14 @@ def build_spec_check_fields_from_insights(insights: list) -> dict[str, Any]:
         raw_label = str(item.get("label") or "").strip().lower()
         if not raw_label:
             raw_label, _value = _extract_label_value(item)
+        if raw_label in DATE_NOTE_TARGETS:
+            note_val = str(item.get("value") or "").strip()
+            prior = note_items.get(raw_label)
+            if note_val and (
+                prior is None or len(note_val) > len(str(prior.get("value") or ""))
+            ):
+                note_items[raw_label] = item
+            continue
         display = DEADLINE_LABEL_DISPLAY.get(raw_label)
         if not display:
             continue
@@ -825,6 +956,17 @@ def build_spec_check_fields_from_insights(insights: list) -> dict[str, Any]:
                     source_item=item,
                 )
             )
+
+    # Stash notes for attachment in finalize_spec_check_fields — attaching here
+    # is too early: the date rules (e.g. bid_open derived by copying the
+    # bid_deadline row) run later and would clobber or duplicate notes.
+    date_notes: dict[str, dict[str, Any]] = {
+        DATE_NOTE_TARGETS[label]: {
+            "text": str(item.get("value") or "").strip(),
+            "source": _make_source(item),
+        }
+        for label, item in note_items.items()
+    }
 
     # ── Bonds from penalties_and_risks + mandatory_documents ─────────────────
     for et in ("penalties_and_risks", "mandatory_documents"):
@@ -877,13 +1019,16 @@ def build_spec_check_fields_from_insights(insights: list) -> dict[str, Any]:
         if key not in seen_set_asides:
             seen_set_asides.add(key)
             source = _make_source(item)
+            # Common "set_aside" field: value already names the program
+            # ("MBE: 10% goal") — avoid a redundant "Set-aside:" prefix.
+            text = detail if raw_label == "set_aside" else f"{display}: {detail}"
             set_aside_items.append(
                 enrich_spec_check_field_entry(
                     {
-                        "text": f"{display}: {detail}",
+                        "text": text,
                         "sources": [source] if source else [],
                     },
-                    field_key=raw_label,
+                    field_key="set_aside" if raw_label == "set_aside" else raw_label,
                     source_item=item,
                 )
             )
@@ -895,6 +1040,8 @@ def build_spec_check_fields_from_insights(insights: list) -> dict[str, Any]:
         "project_dates": project_dates,
         "bond_items": bond_items,
         "set_aside_items": set_aside_items,
+        # Consumed (and removed) by finalize_spec_check_fields.
+        "_date_notes": date_notes,
     }
 
 

@@ -11,11 +11,11 @@ function toneForStage(status: PipelineStage): BadgeTone {
 }
 
 const toneClasses: Record<BadgeTone, string> = {
-  neutral: "bg-slate-100 text-slate-700",
-  pending: "bg-amber-50 text-amber-800",
-  active: "bg-blue-50 text-blue-800",
-  success: "bg-emerald-50 text-emerald-800",
-  error: "bg-red-50 text-red-800",
+  neutral: "bg-surface-muted text-ink-muted",
+  pending: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
+  active: "bg-accent/10 text-accent",
+  success: "bg-green-100 text-green-800 dark:bg-emerald-500/15 dark:text-emerald-300",
+  error: "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300",
 };
 
 export function StatusBadge({ status }: { status: PipelineStage }) {

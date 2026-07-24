@@ -14,7 +14,35 @@ from apps.processing.models import ProcessingJob, ProcessingStageLog
 logger = logging.getLogger(__name__)
 
 
+class ProcessingCancelled(Exception):
+    """Raised when the user cancelled processing — terminal, never retried."""
+
+
 class ProcessingJobService:
+    @staticmethod
+    def raise_if_cancelled(job: ProcessingJob) -> None:
+        """Cooperative cancellation: the cancel endpoint stamps the job with
+        error_code='cancelled'; long-running stages check this at their
+        boundaries so a cancelled run stops instead of finishing and
+        overwriting the cancelled state. (Stage transitions never clear the
+        error fields, so the marker survives mid-flight status changes.)"""
+        error_code = (
+            ProcessingJob.objects.filter(pk=job.pk)
+            .values_list("error_code", flat=True)
+            .first()
+        )
+        if error_code == "cancelled":
+            # Re-assert the failed state in case a stage transition raced past
+            # the cancel and overwrote the document status.
+            Document.objects.filter(pk=job.document_id).update(
+                status=PipelineStage.FAILED
+            )
+            ProcessingJob.objects.filter(pk=job.pk).update(
+                current_stage=PipelineStage.FAILED
+            )
+            raise ProcessingCancelled(
+                f"Processing cancelled by user (job {job.pk})."
+            )
     @staticmethod
     def create_job(document: Document) -> ProcessingJob:
         job = ProcessingJob.objects.create(

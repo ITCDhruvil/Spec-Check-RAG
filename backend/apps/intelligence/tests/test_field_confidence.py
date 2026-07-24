@@ -8,7 +8,6 @@ from apps.intelligence.services.field_confidence import (
     score_spec_field_confidence,
 )
 from apps.intelligence.services.summary_postprocess import (
-    _apply_award_date_alias,
     build_spec_check_fields_from_insights,
     finalize_spec_check_fields,
 )
@@ -56,25 +55,10 @@ def test_enrich_spec_check_field_entry_attaches_field_key():
     assert row["confidence"] >= 85
 
 
-def test_apply_award_date_alias_from_municipal_meeting():
-    spec = {
-        "project_dates": [
-            {
-                "text": "Municipal meeting date",
-                "date": "June 1, 2026",
-                "field_key": "municipal_meeting_date_time",
-                "confidence": 88,
-                "sources": [],
-            }
-        ]
-    }
-    _apply_award_date_alias(spec)
-    labels = [d["text"] for d in spec["project_dates"]]
-    assert "Award date" in labels
-    award = next(d for d in spec["project_dates"] if d["text"] == "Award date")
-    assert award["field_key"] == "award_date"
-    assert award["_alias_of"] == "municipal_meeting_date_time"
-    assert award["date"] == "June 1, 2026"
+# NOTE: a test for `_apply_award_date_alias` was removed 2026-07-16 — the
+# function was never implemented; the current design displays
+# municipal_meeting_date_time with the "Award date" label directly
+# (DEADLINE_LABEL_DISPLAY), which supersedes the planned alias row.
 
 
 def test_build_spec_check_fields_includes_confidence():

@@ -118,39 +118,32 @@ BOND_FIELD_KEYS: dict[str, str] = {
     "Other bonds": "other_bonds",
 }
 
-# Set-aside label mapping (extraction item label -> display text)
+# Set-aside label mapping (extraction item label -> display text).
+# Single common field: every program (MBE/WBE/DBE/...) is a value row under it.
+# Legacy per-program labels map to the same field for old stored summaries.
 SET_ASIDE_LABEL_DISPLAY: dict[str, str] = {
-    "set_aside_mbe": "MBE",
-    "set_aside_wbe": "WBE",
-    "set_aside_dbe": "DBE",
-    "set_aside_dvbe": "DVBE",
-    "set_aside_hub": "HUB",
-    "set_aside_sbe": "SBE",
+    "set_aside": "Set-aside",
+    "set_aside_mbe": "Set-aside",
+    "set_aside_wbe": "Set-aside",
+    "set_aside_dbe": "Set-aside",
+    "set_aside_dvbe": "Set-aside",
+    "set_aside_hub": "Set-aside",
+    "set_aside_sbe": "Set-aside",
 }
 
 SET_ASIDE_FIELD_KEYS: dict[str, str] = {
-    "MBE": "set_aside_mbe",
-    "WBE": "set_aside_wbe",
-    "DBE": "set_aside_dbe",
-    "DVBE": "set_aside_dvbe",
-    "HUB": "set_aside_hub",
-    "SBE": "set_aside_sbe",
+    "Set-aside": "set_aside",
 }
 
 # Fields where only one row should survive post-processing (best citation wins).
 SINGLETON_FIELD_KEYS: frozenset[str] = frozenset(
     {
         "project_name",
-        "project_owner",
         "project_sector",
         "project_value",
-        "project_engineer",
-        "project_architect",
         "project_square_footage",
-        "project_location",
         "project_description",
         "project_document_acquisition_note",
-        "project_solicitation_number",
         "bid_deadline_date_time",
         "bid_open_date_time",
         "project_start_date_time",
@@ -165,12 +158,20 @@ SINGLETON_FIELD_KEYS: frozenset[str] = frozenset(
 # Fields that may legitimately repeat (distinct values kept; exact dupes removed).
 MULTI_VALUE_FIELD_KEYS: frozenset[str] = frozenset(
     {
+        # Documents can name several of each — keep every distinct mention.
+        "project_owner",
+        "project_solicitation_number",
+        "project_engineer",
+        "project_architect",
+        "project_location",
         "bid_bond_information",
         "payment_and_security_bond",
         "maintenance_and_labor_bond",
         "certified_checks",
         "other_bonds",
-        # Set asides — each program type is a distinct row
+        # Set asides — one common field; each program mention is a distinct row
+        "set_aside",
+        # Legacy per-program keys (old stored summaries)
         "set_aside_mbe",
         "set_aside_wbe",
         "set_aside_dbe",

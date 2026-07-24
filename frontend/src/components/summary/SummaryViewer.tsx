@@ -3,8 +3,7 @@
 import { useState, useCallback, useMemo } from "react";
 
 import { SummaryContentBox } from "@/components/summary/SummaryContentBox";
-import { DeadlineItemRow } from "@/components/summary/DeadlineItemRow";
-import { SpecFieldRow } from "@/components/summary/SpecFieldRow";
+import { EventsBlock, SpecFieldRow } from "@/components/summary/SpecFieldRow";
 import type { GeneratedSummaryData, SummarySectionBlock } from "@/lib/types/intelligence";
 import { confidenceTone } from "@/lib/insightCategories";
 import { sortMetadataItems } from "@/lib/specFieldLabels";
@@ -63,27 +62,57 @@ function FieldConfidenceBadge(_props: { confidence?: number }) {
 function SpecFieldsItemsList({
   items,
   extractionType,
+  canonicalFields,
 }: {
   items: SummarySectionBlock[];
   extractionType?: string;
+  /** Fields that must always be shown; absent ones render "Not found in
+   * document" with tick/wrong feedback so the user can verify or correct. */
+  canonicalFields?: { key: string; label: string }[];
 }) {
-  if (!items?.length) return null;
+  const allItems = canonicalFields
+    ? withMissingFieldPlaceholders(items ?? [], canonicalFields)
+    : items ?? [];
+  if (!allItems.length) return null;
   return (
     <SummaryContentBox>
       <ul className="divide-y divide-surface-border/80">
-        {items.map((item, i) => (
+        {allItems.map((item, i) => (
           <li key={i} className="py-3 first:pt-0 last:pb-0">
             <SpecFieldRow
               item={item}
               extractionType={extractionType}
+              notFound={Boolean(item._not_found)}
               valueAsSubtext={Boolean(item.date && !item.text?.includes(": "))}
-              confidenceBadge={<FieldConfidenceBadge confidence={item.confidence} />}
+              confidenceBadge={
+                item._not_found ? undefined : (
+                  <FieldConfidenceBadge confidence={item.confidence} />
+                )
+              }
             />
           </li>
         ))}
       </ul>
     </SummaryContentBox>
   );
+}
+
+/** Append placeholder rows for canonical fields missing from the extraction. */
+function withMissingFieldPlaceholders(
+  items: SummarySectionBlock[],
+  canonical: { key: string; label: string }[]
+): SummarySectionBlock[] {
+  const present = new Set(items.map((d) => d.field_key ?? "").filter(Boolean));
+  const placeholders = canonical
+    .filter((f) => !present.has(f.key))
+    .map(
+      (f): SummarySectionBlock => ({
+        text: f.label,
+        field_key: f.key,
+        _not_found: true,
+      })
+    );
+  return [...items, ...placeholders];
 }
 
 function SectionPanel({
@@ -127,7 +156,7 @@ function ProjectValueInputRow({
       <div className="flex flex-col gap-1.5">
         <span className="text-sm font-medium text-ink">
           Project value{" "}
-          <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-700">
+          <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
             Not in document
           </span>
         </span>
@@ -156,6 +185,74 @@ function ProjectValueInputRow({
   );
 }
 
+/** Canonical fields per section — always shown; absent ones render
+ * "Not found in document" with tick/wrong feedback. */
+const METADATA_FIELDS: { key: string; label: string }[] = [
+  { key: "project_name", label: "Project name" },
+  { key: "project_solicitation_number", label: "Project solicitation number" },
+  { key: "project_owner", label: "Project owner" },
+  { key: "project_sector", label: "Project sector" },
+  { key: "project_value", label: "Project value" },
+  { key: "project_document_acquisition_note", label: "Project document acquisition note" },
+  { key: "project_description", label: "Project description" },
+];
+
+const PEOPLE_FIELDS: { key: string; label: string }[] = [
+  { key: "project_engineer", label: "Project engineer" },
+  { key: "project_architect", label: "Project architect" },
+];
+
+const SIZE_LOCATION_FIELDS: { key: string; label: string }[] = [
+  { key: "project_location", label: "Project location" },
+  { key: "project_square_footage", label: "Project square footage" },
+];
+
+const BOND_FIELDS: { key: string; label: string }[] = [
+  { key: "bid_bond_information", label: "Bid bond information" },
+  { key: "payment_and_security_bond", label: "Performance & payment bond" },
+  { key: "maintenance_and_labor_bond", label: "Maintenance & labor bond" },
+  { key: "certified_checks", label: "Certified checks" },
+  { key: "other_bonds", label: "Other bonds" },
+];
+
+const SET_ASIDE_FIELDS: { key: string; label: string }[] = [
+  { key: "set_aside", label: "Set-aside" },
+];
+
+/** Canonical date fields — always shown; absent values render "Not found in document". */
+const CANONICAL_DATE_FIELDS: { key: string; label: string }[] = [
+  { key: "bid_deadline_date_time", label: "Bid deadline" },
+  { key: "bid_open_date_time", label: "Bid open date" },
+  { key: "pre_bid_deadline_date_time", label: "Pre-bid deadline" },
+  { key: "question_deadline_date_time", label: "Question deadline" },
+  { key: "site_visit_date_time", label: "Site visit" },
+  { key: "municipal_meeting_date_time", label: "Award date" },
+  { key: "project_start_date_time", label: "Project start date" },
+  { key: "project_end_date_time", label: "Project end date" },
+];
+
+function withMissingDatePlaceholders(
+  dates: SummarySectionBlock[]
+): SummarySectionBlock[] {
+  const present = new Set(
+    dates.map((d) => d.field_key ?? "").filter(Boolean)
+  );
+  const presentLabels = new Set(
+    dates.map((d) => (d.text ?? "").trim().toLowerCase())
+  );
+  const placeholders = CANONICAL_DATE_FIELDS.filter(
+    (f) =>
+      !present.has(f.key) && !presentLabels.has(f.label.toLowerCase())
+  ).map(
+    (f): SummarySectionBlock => ({
+      text: f.label,
+      field_key: f.key,
+      _not_found: true,
+    })
+  );
+  return [...dates, ...placeholders];
+}
+
 function SpecDatesList({
   dates,
   showAwaitingNote,
@@ -163,51 +260,89 @@ function SpecDatesList({
   dates: SummarySectionBlock[];
   showAwaitingNote: boolean;
 }) {
-  if (!dates.length) return null;
+  const allDates = withMissingDatePlaceholders(dates);
   return (
     <SummaryContentBox>
       <ul className="divide-y divide-surface-border/80">
-        {dates.map((item, i) => {
-          if (item._calculated) {
+        {allDates.map((item, i) => {
+          if (item._not_found) {
+            // Feedback stays available: the user can confirm the field is
+            // truly absent, or mark it wrong and supply the real value.
             return (
               <li key={i} className="py-3 first:pt-0 last:pb-0">
-                <div className="flex items-start gap-2.5">
-                  <span className="w-5 shrink-0 pt-0.5 text-right text-xs font-medium tabular-nums text-ink-muted">
-                    {i + 1}.
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm">
-                        <span className="font-semibold">{item.text ?? "—"}:</span>
-                      </p>
-                      <span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-600">
-                        estimated
-                      </span>
-                      <FieldConfidenceBadge confidence={item.confidence} />
-                    </div>
-                    {item.date ? (
-                      <p className="mt-1 text-sm font-normal leading-relaxed text-ink-muted">
-                        {item.date}
-                      </p>
-                    ) : null}
-                    {item._awaiting_project_value && showAwaitingNote && (
-                      <p className="mt-1 text-xs italic text-amber-600">
-                        Enter project value above to refine this estimate.
-                      </p>
-                    )}
-                  </div>
-                </div>
+                <SpecFieldRow
+                  item={item}
+                  extractionType="submission_deadlines"
+                  notFound
+                />
               </li>
             );
           }
+          if (item._calculated) {
+            // Split "April 10, 2026 (estimated — 30 calendar days from Bid
+            // open date)" into a clean value + a muted derivation footnote.
+            const raw = String(item.date ?? "");
+            const parenIdx = raw.indexOf("(");
+            const cleanDate = (parenIdx > 0 ? raw.slice(0, parenIdx) : raw).trim();
+            const derivation =
+              parenIdx > 0 ? raw.slice(parenIdx + 1).replace(/\)\s*$/, "") : "";
+            return (
+              <li key={i} className="py-3 first:pt-0 last:pb-0">
+                <SpecFieldRow
+                  item={{ ...item, date: cleanDate }}
+                  extractionType="submission_deadlines"
+                  valueAsSubtext={Boolean(cleanDate)}
+                  confidenceBadge={<FieldConfidenceBadge confidence={item.confidence} />}
+                  valueBadge={
+                    <span className="ml-1.5 rounded bg-accent/10 px-1.5 py-0.5 text-xs font-medium text-accent">
+                      estimated
+                    </span>
+                  }
+                  footnote={
+                    <>
+                      {derivation && (
+                        <p className="mt-0.5 text-xs text-ink-muted">{derivation}</p>
+                      )}
+                      {item._awaiting_project_value && showAwaitingNote && (
+                        <p className="mt-0.5 text-xs italic text-amber-600">
+                          Enter project value above to refine this estimate.
+                        </p>
+                      )}
+                    </>
+                  }
+                />
+              </li>
+            );
+          }
+          // SpecFieldRow brings copy / jump / feedback / citations — the same
+          // actions every other section already has.
           return (
-            <DeadlineItemRow
-              key={i}
-              item={item}
-              index={i}
-              showSources
-              confidenceBadge={<FieldConfidenceBadge confidence={item.confidence} />}
-            />
+            <li key={i} className="py-3 first:pt-0 last:pb-0">
+              <SpecFieldRow
+                item={item}
+                extractionType="submission_deadlines"
+                valueAsSubtext={Boolean(item.date)}
+                confidenceBadge={<FieldConfidenceBadge confidence={item.confidence} />}
+                labelBadge={
+                  // Only the disqualification-critical case gets a badge;
+                  // non-mandatory is already stated in the Events text.
+                  item._mandatory === true ? (
+                    <span className="mr-1 rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">
+                      Mandatory
+                    </span>
+                  ) : undefined
+                }
+                footnote={
+                  item._note ? (
+                    <EventsBlock
+                      fieldKey={item.field_key ?? "date"}
+                      text={item._note}
+                      sources={item._note_sources}
+                    />
+                  ) : null
+                }
+              />
+            </li>
           );
         })}
       </ul>
@@ -281,15 +416,22 @@ export function SummaryViewer({ data }: { data: GeneratedSummaryData }) {
       <SectionPanel title="Project overview" defaultOpen>
         <SummaryContentBox>
           <ul className="divide-y divide-surface-border/80">
-            {metadataItems.map((item, i) => (
-              <li key={i} className="py-3 first:pt-0 last:pb-0">
-                <SpecFieldRow
-                  item={item}
-                  extractionType="eligibility_criteria"
-                  confidenceBadge={<FieldConfidenceBadge confidence={item.confidence} />}
-                />
-              </li>
-            ))}
+            {withMissingFieldPlaceholders(metadataItems, METADATA_FIELDS).map(
+              (item, i) => (
+                <li key={i} className="py-3 first:pt-0 last:pb-0">
+                  <SpecFieldRow
+                    item={item}
+                    extractionType="eligibility_criteria"
+                    notFound={Boolean(item._not_found)}
+                    confidenceBadge={
+                      item._not_found ? undefined : (
+                        <FieldConfidenceBadge confidence={item.confidence} />
+                      )
+                    }
+                  />
+                </li>
+              )
+            )}
             {!docHasProjectValue && (
               <ProjectValueInputRow onCalculate={handleCalculate} />
             )}
@@ -298,45 +440,43 @@ export function SummaryViewer({ data }: { data: GeneratedSummaryData }) {
       </SectionPanel>
 
       <SectionPanel title="People (engineer / architect)" defaultOpen={false}>
-        {spec?.project_people_items?.length ? (
-          <SpecFieldsItemsList items={spec.project_people_items!} extractionType="eligibility_criteria" />
-        ) : (
-          <EmptySection />
-        )}
+        <SpecFieldsItemsList
+          items={spec?.project_people_items ?? []}
+          extractionType="eligibility_criteria"
+          canonicalFields={PEOPLE_FIELDS}
+        />
       </SectionPanel>
 
       <SectionPanel title="Size & location" defaultOpen={false}>
-        {spec?.project_size_location_items?.length ? (
-          <SpecFieldsItemsList items={spec.project_size_location_items!} extractionType="technical_requirements" />
-        ) : (
-          <EmptySection />
-        )}
+        <SpecFieldsItemsList
+          items={spec?.project_size_location_items ?? []}
+          extractionType="technical_requirements"
+          canonicalFields={SIZE_LOCATION_FIELDS}
+        />
       </SectionPanel>
 
       <SectionPanel title="Important dates" defaultOpen={false}>
-        {dates.length ? (
-          <SpecDatesList
-            dates={dates}
-            showAwaitingNote={!docHasProjectValue}
-          />
-        ) : (
-          <EmptySection />
-        )}
+        <SpecDatesList
+          dates={dates}
+          showAwaitingNote={!docHasProjectValue}
+        />
       </SectionPanel>
 
       <SectionPanel title="Bond / security instruments" defaultOpen={false}>
-        {spec?.bond_items?.length ? (
-          <SpecFieldsItemsList items={spec.bond_items!} extractionType="penalties_and_risks" />
-        ) : (
-          <EmptySection />
-        )}
+        <SpecFieldsItemsList
+          items={spec?.bond_items ?? []}
+          extractionType="penalties_and_risks"
+          canonicalFields={BOND_FIELDS}
+        />
       </SectionPanel>
 
-      {spec?.set_aside_items?.length ? (
-        <SectionPanel title="Set-asides / diversity goals" defaultOpen={false}>
-          <SpecFieldsItemsList items={spec.set_aside_items!} extractionType="set_asides" />
-        </SectionPanel>
-      ) : null}
+      <SectionPanel title="Set-asides / diversity goals" defaultOpen={false}>
+        <SpecFieldsItemsList
+          items={spec?.set_aside_items ?? []}
+          extractionType="set_asides"
+          canonicalFields={SET_ASIDE_FIELDS}
+        />
+      </SectionPanel>
     </div>
   );
 }

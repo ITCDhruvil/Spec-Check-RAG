@@ -36,11 +36,55 @@ def _try_docling(file_path: Path) -> DocumentParseResult | None:
         return None
 
 
+def _looks_scanned_or_garbled(result: DocumentParseResult) -> bool:
+    """True when local parsing produced unusably poor text (scanned/garbled PDF)."""
+    threshold = float(getattr(settings, "PARSING_DI_FALLBACK_QUALITY_THRESHOLD", 0.45))
+    if result.parsing_quality_score < threshold:
+        return True
+    pages = result.pages or []
+    if not pages:
+        return True
+    empty = sum(1 for p in pages if p.is_empty)
+    # Mostly-empty documents are scans even when the few text pages score well.
+    return empty / len(pages) > 0.5
+
+
+def _di_fallback_if_poor(
+    result: DocumentParseResult, file_path: Path
+) -> DocumentParseResult:
+    """Re-parse with Azure Document Intelligence when local text quality is poor."""
+    if not getattr(settings, "PARSING_DI_FALLBACK_ENABLED", True):
+        return result
+    if not is_azure_di_configured():
+        return result
+    if not _looks_scanned_or_garbled(result):
+        return result
+    try:
+        di_result = parse_pdf_azure_di(file_path)
+    except Exception as exc:
+        logger.warning(
+            "azure_di_quality_fallback_failed path=%s error=%s — keeping local parse",
+            file_path,
+            exc,
+        )
+        return result
+    logger.info(
+        "azure_di_quality_fallback path=%s local_quality=%s di_quality=%s",
+        file_path,
+        result.parsing_quality_score,
+        di_result.parsing_quality_score,
+    )
+    # Keep whichever parse actually read the document better.
+    if di_result.parsing_quality_score >= result.parsing_quality_score:
+        return di_result
+    return result
+
+
 def parse_pdf(file_path: Path) -> DocumentParseResult:
     strategy = getattr(settings, "PARSING_PDF_PARSER", "docling").lower()
 
     if strategy == "pymupdf":
-        return parse_pdf_pymupdf(file_path)
+        return _di_fallback_if_poor(parse_pdf_pymupdf(file_path), file_path)
 
     if strategy == "azure":
         if not is_azure_di_configured():
@@ -52,10 +96,10 @@ def parse_pdf(file_path: Path) -> DocumentParseResult:
     if strategy == "docling":
         result = _try_docling(file_path)
         if result is not None:
-            return result
+            return _di_fallback_if_poor(result, file_path)
         # Fallback: PyMuPDF
         logger.info("docling_fallback_pymupdf path=%s", file_path)
-        return parse_pdf_pymupdf(file_path)
+        return _di_fallback_if_poor(parse_pdf_pymupdf(file_path), file_path)
 
     # auto (legacy): Azure DI if configured, else PyMuPDF
     if is_azure_di_configured():
@@ -70,4 +114,4 @@ def parse_pdf(file_path: Path) -> DocumentParseResult:
                 exc,
             )
 
-    return parse_pdf_pymupdf(file_path)
+    return _di_fallback_if_poor(parse_pdf_pymupdf(file_path), file_path)

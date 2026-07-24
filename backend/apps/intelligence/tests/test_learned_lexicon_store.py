@@ -105,21 +105,16 @@ class LearnedLexiconStoreTests(TestCase):
         INTELLIGENCE_LEARNED_LEXICON_ENABLED=True,
         INTELLIGENCE_LEARNED_LEXICON_MIN_TERMS_PER_TYPE=1,
         INTELLIGENCE_ADAPTIVE_LLM_SKIP_IF_CACHE_FULL=True,
+        INTELLIGENCE_FAST_MODE=False,  # fast mode short-circuits the LLM path
     )
     @patch("apps.intelligence.services.adaptive_lexicon_service.OpenAIService")
     def test_build_skips_llm_when_term_already_in_cache(self, mock_openai_cls):
+        from apps.intelligence.choices import FOCUSED_EXTRACTION_TYPES
         from apps.intelligence.services.adaptive_lexicon_service import AdaptiveLexiconService
 
-        for etype in [
-            ExtractionType.ELIGIBILITY_CRITERIA,
-            ExtractionType.SUBMISSION_DEADLINES,
-            ExtractionType.TECHNICAL_REQUIREMENTS,
-            ExtractionType.SCOPE_OF_WORK,
-            ExtractionType.PAYMENT_TERMS,
-            ExtractionType.PENALTIES_AND_RISKS,
-            ExtractionType.MANDATORY_DOCUMENTS,
-            ExtractionType.EVALUATION_CRITERIA,
-        ]:
+        # Cache must be "sufficient" for every focused type — seed the actual
+        # list so the test tracks FOCUSED_EXTRACTION_TYPES as it evolves.
+        for etype in FOCUSED_EXTRACTION_TYPES:
             LearnedExtractionTerm.objects.create(
                 extraction_type=etype,
                 entry_kind=LearnedEntryKind.TERM,

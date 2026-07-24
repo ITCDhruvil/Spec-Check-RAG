@@ -186,6 +186,16 @@ export interface FeedbackStats {
   by_type: FeedbackTypeBreakdown[];
   active_jobs: FineTuneJobRow[];
   fine_tuned_models: Record<string, string>;
+  learning?: {
+    totals: { corrections: number; resolved: number; recurred: number; pending: number };
+    per_field: {
+      field_key: string;
+      corrections: number;
+      resolved: number;
+      recurred: number;
+      pending: number;
+    }[];
+  };
   settings: {
     finetune_enabled: boolean;
     threshold: number;

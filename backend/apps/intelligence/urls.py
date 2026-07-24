@@ -1,6 +1,10 @@
 from django.urls import path
 
 from apps.intelligence.views import (
+    AIInsightsView,
+    FeatureSettingsView,
+    AnalyticsExportPreviewView,
+    AnalyticsExportView,
     AppSettingsView,
     CancelSummaryView,
     ExtractedInsightsListView,
@@ -16,6 +20,8 @@ from apps.intelligence.views import (
     RepairSpecCheckView,
     SummaryPdfDownloadView,
     SummaryStatusView,
+    UserInsightDetailView,
+    UserInsightsView,
 )
 
 urlpatterns = [
@@ -69,6 +75,20 @@ urlpatterns = [
     path("feedback/", FeedbackListView.as_view(), name="feedback-list"),
     path("feedback/<uuid:feedback_id>/", FeedbackDetailView.as_view(), name="feedback-detail"),
     path("feedback/settings/", AppSettingsView.as_view(), name="feedback-settings"),
+    path("analytics/user-insights/", UserInsightsView.as_view(), name="user-insights"),
+    path(
+        "analytics/user-insights/<int:user_id>/",
+        UserInsightDetailView.as_view(),
+        name="user-insight-detail",
+    ),
+    path("analytics/export/", AnalyticsExportView.as_view(), name="analytics-export"),
+    path(
+        "analytics/export/preview/",
+        AnalyticsExportPreviewView.as_view(),
+        name="analytics-export-preview",
+    ),
+    path("analytics/ai-insights/", AIInsightsView.as_view(), name="analytics-ai-insights"),
+    path("settings/features/", FeatureSettingsView.as_view(), name="feature-settings"),
     path("finetune/jobs/", FineTuneJobListView.as_view(), name="finetune-jobs"),
     path("finetune/trigger/", FineTuneTriggerView.as_view(), name="finetune-trigger"),
 ]

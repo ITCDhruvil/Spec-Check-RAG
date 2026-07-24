@@ -1,24 +1,17 @@
 "use client";
 
-import Link from "next/link";
-
 import { SplitPanelLayout } from "@/components/layout/SplitPanelLayout";
+import { SpokesLoader } from "@/components/ui/Spokes";
+import { usePageHeader } from "@/lib/pageHeaderContext";
 
 /** Static shell shown during SSR and until client mount (avoids hydration mismatch). */
 export function SummaryPageSkeleton() {
-  const header = (
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <Link href="/" className="text-xs text-ink-muted hover:text-ink">
-          ← Dashboard
-        </Link>
-        <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-          Specification briefing
-        </h2>
-        <p className="mt-1 text-sm text-ink-muted">Your document</p>
-      </div>
-    </div>
-  );
+  // Header renders in the AppShell top bar (replaces the brand block).
+  usePageHeader({
+    backHref: "/",
+    backLabel: "Dashboard",
+    title: "Specification briefing",
+  });
 
   const briefing = (
     <div className="space-y-6">
@@ -35,19 +28,14 @@ export function SummaryPageSkeleton() {
 
   const preview = (
     <div className="flex h-full min-h-[320px] flex-col">
-      <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold tracking-tight">Document preview</h3>
-          <p className="mt-0.5 truncate text-xs text-ink-muted">Loading…</p>
-        </div>
+      <div className="mb-2 flex shrink-0 items-center justify-between gap-3">
+        <p className="min-w-0 truncate text-xs font-medium text-ink">Loading…</p>
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center rounded-md border border-surface-border bg-surface">
-        <p className="text-sm text-ink-muted">Loading PDF preview…</p>
+        <SpokesLoader label="Loading PDF preview…" className="py-0" />
       </div>
     </div>
   );
 
-  return (
-    <SplitPanelLayout header={header} left={briefing} right={preview} />
-  );
+  return <SplitPanelLayout left={briefing} right={preview} />;
 }

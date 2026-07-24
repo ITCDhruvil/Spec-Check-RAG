@@ -112,7 +112,11 @@ export interface DocumentListItem {
   mime_type: string;
   size_bytes: number;
   status: PipelineStage;
+  /** User finished pulling data — opens in Manual view from the dashboard. */
+  marked_done?: boolean;
   tender_reference: string | null;
+  /** User-given tender title — preferred display name over the raw filename. */
+  tender_title?: string | null;
   version_label: string | null;
   created_at: string;
   updated_at: string;

@@ -245,6 +245,23 @@ class FieldFeedback(UUIDPrimaryKeyModel, TimeStampedModel):
     # Prevent double-use in fine-tuning runs.
     used_in_finetune = models.BooleanField(default=False, db_index=True)
 
+    # ── Learning-loop regression tracking ────────────────────────────────
+    # After the document is re-extracted, the new value is compared against
+    # this correction: resolved = mistake fixed, recurred = same mistake again.
+    class ResolutionStatus(models.TextChoices):
+        PENDING = "pending", "Pending re-check"
+        RESOLVED = "resolved", "Resolved"
+        RECURRED = "recurred", "Recurred"
+
+    resolution_status = models.CharField(
+        max_length=16,
+        choices=ResolutionStatus.choices,
+        default=ResolutionStatus.PENDING,
+        db_index=True,
+    )
+    last_checked_at = models.DateTimeField(null=True, blank=True)
+    recheck_count = models.PositiveIntegerField(default=0)
+
     class Meta:
         ordering = ["-created_at"]
         indexes = [

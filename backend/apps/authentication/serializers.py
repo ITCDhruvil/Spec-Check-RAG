@@ -3,10 +3,12 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from apps.authentication.permissions import is_admin_user
+from apps.authentication.models import UserRole
+from apps.authentication.permissions import is_admin_user, is_management_user, role_of
 from apps.authentication.services import (
     get_admin_visible_password,
     set_admin_visible_password,
+    set_user_role,
 )
 from apps.authentication.utils import MIN_PASSWORD_LENGTH, generate_password
 
@@ -41,6 +43,8 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     is_admin = serializers.SerializerMethodField()
+    is_management = serializers.SerializerMethodField()
+    role = serializers.SerializerMethodField()
     display_password = serializers.SerializerMethodField()
 
     class Meta:
@@ -55,12 +59,28 @@ class UserSerializer(serializers.ModelSerializer):
             "date_joined",
             "last_login",
             "is_admin",
+            "is_management",
+            "role",
             "display_password",
         )
-        read_only_fields = ("id", "date_joined", "last_login", "is_admin", "display_password")
+        read_only_fields = (
+            "id",
+            "date_joined",
+            "last_login",
+            "is_admin",
+            "is_management",
+            "role",
+            "display_password",
+        )
 
     def get_is_admin(self, obj) -> bool:
         return is_admin_user(obj)
+
+    def get_is_management(self, obj) -> bool:
+        return is_management_user(obj)
+
+    def get_role(self, obj) -> str:
+        return role_of(obj)
 
     def get_display_password(self, obj) -> str | None:
         password = get_admin_visible_password(obj)
@@ -72,12 +92,23 @@ class UserCreateSerializer(serializers.Serializer):
     email = serializers.EmailField()
     first_name = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
     last_name = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
+    role = serializers.ChoiceField(
+        choices=UserRole.choices, required=False, default=UserRole.USER
+    )
     password = serializers.CharField(
         min_length=MIN_PASSWORD_LENGTH,
         required=False,
         allow_blank=True,
         write_only=True,
     )
+
+    def validate_role(self, value: str) -> str:
+        # Admin is unique — only the configured admin account holds it.
+        if value == UserRole.ADMIN:
+            raise serializers.ValidationError(
+                "The admin role cannot be assigned; there is exactly one admin account."
+            )
+        return value
 
     def validate_email(self, value: str) -> str:
         email = value.strip().lower()
@@ -98,6 +129,7 @@ class UserCreateSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         raw_password = validated_data.pop("password", "").strip()
+        role = validated_data.pop("role", UserRole.USER)
         generated = not raw_password
         password = raw_password or generate_password()
 
@@ -110,6 +142,7 @@ class UserCreateSerializer(serializers.Serializer):
             is_active=True,
         )
         set_admin_visible_password(user, password)
+        set_user_role(user, role)
         user._generated_password = password if generated else None  # noqa: SLF001
         return user
 
@@ -122,10 +155,28 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         write_only=True,
     )
     regenerate_password = serializers.BooleanField(required=False, default=False, write_only=True)
+    role = serializers.ChoiceField(choices=UserRole.choices, required=False, write_only=True)
+
+    def validate_role(self, value: str) -> str:
+        # Admin is unique — only the configured admin account holds it.
+        if value == UserRole.ADMIN:
+            raise serializers.ValidationError(
+                "The admin role cannot be assigned; there is exactly one admin account."
+            )
+        return value
 
     class Meta:
         model = User
-        fields = ("username", "email", "first_name", "last_name", "is_active", "password", "regenerate_password")
+        fields = (
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "is_active",
+            "password",
+            "regenerate_password",
+            "role",
+        )
 
     def validate_email(self, value: str) -> str:
         email = value.strip().lower()
@@ -149,6 +200,9 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         regenerate = validated_data.pop("regenerate_password", False)
         raw_password = validated_data.pop("password", "").strip()
+        role = validated_data.pop("role", None)
+        if role:
+            set_user_role(instance, role)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)

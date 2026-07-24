@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DocumentActionsMenu } from "@/components/documents/DocumentActionsMenu";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Pagination, paginateSlice } from "@/components/ui/Pagination";
+import { truncateFilename } from "@/lib/truncate";
 import type { DocumentListItem } from "@/lib/types/document";
 import { ACTIVE_STAGES } from "@/lib/types/document";
 
@@ -23,6 +24,7 @@ function formatDate(iso: string): string {
     timeStyle: "short",
   });
 }
+
 
 type StatusFilter = "all" | "ready" | "processing" | "failed";
 
@@ -61,6 +63,7 @@ export function DocumentTable({
         if (!q) return true;
         return (
           doc.original_filename.toLowerCase().includes(q) ||
+          (doc.tender_title ?? "").toLowerCase().includes(q) ||
           (doc.tender_reference ?? "").toLowerCase().includes(q) ||
           (doc.version_label ?? "").toLowerCase().includes(q)
         );
@@ -170,21 +173,33 @@ export function DocumentTable({
                 <th className="hidden px-4 py-3 sm:table-cell">Version</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="hidden px-4 py-3 lg:table-cell">Uploaded</th>
-                <th className="w-12 px-4 py-3 text-right">
-                  <span className="sr-only">Actions</span>
-                </th>
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-border/80">
               {pageItems.map((doc) => (
                 <tr key={doc.id} className="hover:bg-surface-muted/40">
-                  <td className="px-4 py-3">
+                  <td className="max-w-[420px] px-4 py-3">
                     <Link
-                      href={`/documents/${doc.id}/summary`}
-                      className="font-medium text-ink hover:text-accent"
+                      href={`/documents/${doc.id}/${doc.marked_done ? "manual" : "summary"}`}
+                      className="block truncate whitespace-nowrap font-medium text-ink hover:text-accent"
+                      title={doc.tender_title || doc.original_filename}
                     >
-                      {doc.original_filename}
+                      {truncateFilename(doc.tender_title || doc.original_filename)}
+                      {doc.marked_done && (
+                        <span className="ml-2 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-800 dark:bg-emerald-500/15 dark:text-emerald-300">
+                          Done
+                        </span>
+                      )}
                     </Link>
+                    {doc.tender_title && (
+                      <p
+                        className="mt-0.5 truncate text-xs text-ink-muted"
+                        title={doc.original_filename}
+                      >
+                        {truncateFilename(doc.original_filename, 56)}
+                      </p>
+                    )}
                     <p className="mt-0.5 text-xs text-ink-muted md:hidden">
                       {doc.tender_reference ?? "—"} · {formatBytes(doc.size_bytes)}
                     </p>

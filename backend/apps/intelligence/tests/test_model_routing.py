@@ -36,12 +36,21 @@ class ModelRoutingTests(SimpleTestCase):
 
     @override_settings(
         INTELLIGENCE_MODEL_ROUTING_ENABLED=True,
+        FINETUNE_ENABLED=False,
         OPENAI_MODEL="gpt-4o",
         OPENAI_MODEL_FAST="gpt-4o-mini",
+        AZURE_OPENAI_CHAT_DEPLOYMENT="",
+        AZURE_OPENAI_CHAT_DEPLOYMENT_FAST="",
     )
     def test_extraction_type_tier_mapping(self):
+        # SCOPE_OF_WORK is deliberately routed to the strong tier (scattered
+        # prose needs the stronger model); TECHNICAL_REQUIREMENTS stays fast.
         self.assertEqual(
             extraction_model(ExtractionType.SCOPE_OF_WORK),
+            "gpt-4o",
+        )
+        self.assertEqual(
+            extraction_model(ExtractionType.TECHNICAL_REQUIREMENTS),
             "gpt-4o-mini",
         )
         self.assertEqual(
@@ -63,18 +72,26 @@ class ModelRoutingTests(SimpleTestCase):
     @override_settings(
         INTELLIGENCE_MODEL_ESCALATION_ENABLED=True,
         INTELLIGENCE_MODEL_ROUTING_ENABLED=True,
+        INTELLIGENCE_FAST_MODE=False,  # fast mode short-circuits escalation
+        FINETUNE_ENABLED=False,
+        OPENAI_MODEL="gpt-4o",
+        OPENAI_MODEL_FAST="gpt-4o-mini",
+        AZURE_OPENAI_CHAT_DEPLOYMENT="",
+        AZURE_OPENAI_CHAT_DEPLOYMENT_FAST="",
     )
     def test_escalation_only_when_fast_tier_returns_empty(self):
+        # TECHNICAL_REQUIREMENTS is a fast-tier type (escalation applies);
+        # strong-tier types can't escalate (already on the strong model).
         self.assertTrue(
             should_escalate_extraction(
-                ExtractionType.SCOPE_OF_WORK,
+                ExtractionType.TECHNICAL_REQUIREMENTS,
                 items=[],
                 started_with_fast=True,
             )
         )
         self.assertFalse(
             should_escalate_extraction(
-                ExtractionType.SCOPE_OF_WORK,
+                ExtractionType.TECHNICAL_REQUIREMENTS,
                 items=[{"requirement": "x"}],
                 started_with_fast=True,
             )

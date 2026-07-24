@@ -24,7 +24,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Applies the saved theme before first paint — without this, every
+            loading state (auth check, page transitions, etc.) briefly
+            renders in light mode because React hasn't mounted yet. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var t=localStorage.getItem('spec-check-theme');" +
+              "if(t==='dark'){document.documentElement.dataset.theme='dark';}}catch(e){}})();",
+          }}
+        />
+      </head>
       <body className={`${inter.variable} font-sans`}>
         <QueryProvider>
           <AuthProvider>

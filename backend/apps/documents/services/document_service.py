@@ -27,6 +27,18 @@ from apps.processing.services.job_service import ProcessingJobService
 logger = logging.getLogger(__name__)
 
 
+class DuplicateDocumentError(ServiceError):
+    """Identical file content already uploaded."""
+
+    def __init__(self, existing: "Document"):
+        self.existing = existing
+        super().__init__(
+            "This document has already been uploaded.",
+            code="duplicate_document",
+            status_code=409,
+        )
+
+
 class DocumentService:
     """Business logic for document upload and retrieval."""
 
@@ -88,6 +100,20 @@ class DocumentService:
         checksum = digest.hexdigest()
         relative_path = str(destination.relative_to(upload_dir.parent))
 
+        # Duplicate guard: identical file content already uploaded → reject with
+        # a pointer to the existing document instead of creating a new version.
+        existing = (
+            Document.objects.filter(checksum_sha256=checksum)
+            .order_by("-created_at")
+            .first()
+        )
+        if existing is not None:
+            try:
+                destination.unlink()
+            except OSError:
+                pass
+            raise DuplicateDocumentError(existing)
+
         with transaction.atomic():
             tender = TenderService.resolve_tender(ctx, user=uploaded_by)
             document = Document.objects.create(
@@ -107,7 +133,9 @@ class DocumentService:
             TenderService.attach_document_version(tender, document, ctx)
             DocumentContentService.ensure_scaffold(document)
             job = ProcessingJobService.create_job(document)
-            ProcessingJobService.enqueue_job(job)
+            # Enqueue only after commit: keeps broker I/O out of the DB
+            # transaction and guarantees the worker sees the committed rows.
+            transaction.on_commit(lambda: ProcessingJobService.enqueue_job(job))
 
         logger.info(
             "document_uploaded document_id=%s tender=%s filename=%s",

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { TextShimmer } from "@/components/ui/TextShimmer";
 import {
   resolveUserProcessingPhase,
   type UserProcessingPhase,
@@ -229,13 +230,13 @@ function StopModal({
       aria-labelledby="stop-modal-title"
     >
       <div
-        className="w-full max-w-sm rounded-2xl border border-surface-border bg-white p-6 shadow-2xl"
+        className="w-full max-w-sm rounded-2xl border border-surface-border bg-surface p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Icon */}
-        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-500/15">
           <svg
-            className="h-6 w-6 text-red-600"
+            className="h-6 w-6 text-red-600 dark:text-red-400"
             viewBox="0 0 24 24"
             fill="currentColor"
             aria-hidden
@@ -246,11 +247,11 @@ function StopModal({
 
         <h3
           id="stop-modal-title"
-          className="text-base font-semibold text-gray-900"
+          className="text-base font-semibold text-ink"
         >
           Stop processing?
         </h3>
-        <p className="mt-2 text-sm leading-relaxed text-gray-500">
+        <p className="mt-2 text-sm leading-relaxed text-ink-muted">
           All progress will be discarded. You can restart processing from the
           beginning at any time.
         </p>
@@ -260,7 +261,7 @@ function StopModal({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
           >
             Keep going
           </button>
@@ -269,7 +270,7 @@ function StopModal({
             onClick={() => {
               onConfirm();
             }}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-surface"
           >
             Yes, stop it
           </button>
@@ -287,17 +288,18 @@ function StopButton({ onStop }: { onStop: () => void }) {
       <button
         type="button"
         onClick={() => setModalOpen(true)}
-        className="flex items-center gap-1.5 rounded-lg border border-surface-border px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+        title="Stop processing"
+        aria-label="Stop processing"
+        className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
       >
         <svg
-          className="h-3.5 w-3.5"
+          className="h-4 w-4"
           viewBox="0 0 14 14"
           fill="none"
           aria-hidden
         >
           <rect x="3" y="3" width="8" height="8" rx="1.5" fill="currentColor" />
         </svg>
-        Stop processing
       </button>
 
       {modalOpen && (
@@ -345,16 +347,16 @@ function CancelledCard() {
 
 function ErrorCard() {
   return (
-    <div className="rounded-lg border border-red-200 bg-red-50 p-6">
+    <div className="rounded-lg border border-red-200 bg-red-50 p-6 dark:border-red-500/30 dark:bg-red-500/10">
       <div className="flex items-start gap-4">
-        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-100 text-sm font-bold text-red-600">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-100 text-sm font-bold text-red-600 dark:bg-red-500/15 dark:text-red-400">
           !
         </div>
         <div>
-          <p className="text-sm font-semibold text-red-900">
+          <p className="text-sm font-semibold text-red-700 dark:text-red-300">
             Something went wrong
           </p>
-          <p className="mt-1 text-sm text-red-700">
+          <p className="mt-1 text-sm text-red-700 dark:text-red-300">
             We could not finish processing this document. You can try again
             below.
           </p>
@@ -447,14 +449,14 @@ export function SimpleProcessingCard({
           aria-live="polite"
           aria-atomic="true"
         >
-          {statusText}
+          {isDone ? statusText : <TextShimmer>{statusText}</TextShimmer>}
         </p>
 
         {/* Elapsed timer */}
         {timer.visible && (
           <span
             className={`shrink-0 font-mono text-sm tabular-nums ${
-              timer.isDone ? "font-medium text-emerald-700" : "text-ink-muted"
+              timer.isDone ? "font-medium text-emerald-700 dark:text-emerald-300" : "text-ink-muted"
             }`}
             aria-label={
               timer.isDone

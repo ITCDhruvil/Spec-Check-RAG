@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
@@ -8,8 +7,9 @@ import { useEffect, useRef } from "react";
 import { SimpleProcessingCard } from "@/components/documents/SimpleProcessingCard";
 import { DocumentPreview } from "@/components/documents/DocumentPreview";
 import { SplitPanelLayout } from "@/components/layout/SplitPanelLayout";
+import { usePageHeader } from "@/lib/pageHeaderContext";
 import { PdfNavigationProvider } from "@/lib/pdfNavigationContext";
-import { BriefingDownloadMenu } from "@/components/summary/BriefingDownloadMenu";
+import { AdminNotePanel } from "@/components/summary/AdminNotePanel";
 import { SummaryViewer } from "@/components/summary/SummaryViewer";
 import { SummaryPageSkeleton } from "@/components/summary/SummaryPageSkeleton";
 import { MaintenanceBanner } from "@/components/summary/MaintenanceBanner";
@@ -187,46 +187,34 @@ export default function SummaryPage() {
     "Your document";
   const resolvedMimeType =
     documentQuery.data?.mime_type ?? cachedMeta?.mime_type;
+  // Tender title (user-given) is the preferred display name everywhere.
+  const tenderTitle = documentQuery.data?.tender?.title;
+  const displayName =
+    tenderTitle && tenderTitle !== documentQuery.data?.tender?.reference_code
+      ? tenderTitle
+      : resolvedFilename;
 
-  const pageHeader = (
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <Link href="/" className="text-xs text-ink-muted hover:text-ink">
-          ← Dashboard
-        </Link>
-        <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-          Specification briefing
-        </h2>
-        <p className="mt-1 text-sm text-ink-muted">{resolvedFilename}</p>
-      </div>
-      {hasSummary && (
-        <div className="flex flex-col items-end gap-3 sm:flex-row sm:items-start">
-          <BriefingDownloadMenu
-            documentId={documentId}
-            filename={resolvedFilename}
-          />
-          <Link
-            href={`/documents/${documentId}/chat`}
-            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
-          >
-            Ask questions about this tender
-          </Link>
-        </div>
-      )}
-    </div>
-  );
+  // PDF download menu + "Ask questions" CTA temporarily hidden from this page.
+  // BriefingDownloadMenu and /documents/[id]/chat remain available to re-enable.
+  // Page header renders in the AppShell top bar (replaces the brand block).
+  usePageHeader({
+    backHref: "/",
+    backLabel: "Dashboard",
+    title: "Specification briefing",
+    subtitle: displayName,
+  });
 
   const briefingPanel = (
     <div className="space-y-6">
       <MaintenanceBanner />
       {(generateMutation.isError || regenerateMutation.isError) && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
           {(generateMutation.error ?? regenerateMutation.error)?.message}
         </div>
       )}
 
       {statusQuery.isError && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
           {(statusQuery.error as Error).message}
         </div>
       )}
@@ -267,7 +255,7 @@ export default function SummaryPage() {
             className={`flex flex-wrap items-center gap-3 rounded-md border px-4 py-3 text-sm ${
               wasCancelled
                 ? "border-surface-border bg-surface text-ink-muted"
-                : "border-red-200 bg-red-50 text-red-800"
+                : "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
             }`}
           >
             <p className="flex-1">
@@ -296,7 +284,7 @@ export default function SummaryPage() {
               className={`rounded-md px-3 py-1.5 text-sm font-medium ring-1 disabled:opacity-50 ${
                 wasCancelled
                   ? "bg-surface-muted text-ink ring-surface-border hover:bg-surface"
-                  : "bg-white text-red-900 ring-red-200 hover:bg-red-50"
+                  : "bg-surface text-red-600 ring-red-200 hover:bg-red-50 dark:text-red-300 dark:ring-red-500/30 dark:hover:bg-red-500/10"
               }`}
             >
               {generateMutation.isPending
@@ -314,7 +302,7 @@ export default function SummaryPage() {
       )}
 
       {hasSummary && summaryQuery.isError && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
           {(summaryQuery.error as Error).message}
         </div>
       )}
@@ -331,16 +319,16 @@ export default function SummaryPage() {
         );
         if (hasSpec) return null;
         return (
-          <div className="flex flex-wrap items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
+          <div className="flex flex-wrap items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
             <div className="flex-1">
-              <p className="font-medium text-amber-800">Spec-check register is empty</p>
-              <p className="mt-0.5 text-amber-700">
+              <p className="font-medium text-amber-800 dark:text-amber-300">Spec-check register is empty</p>
+              <p className="mt-0.5 text-amber-700 dark:text-amber-200">
                 Project identity, dates, and bond fields were not extracted into the
                 spec-check register. Click &ldquo;Build&rdquo; to populate them from the
                 existing extraction data — no re-processing required.
               </p>
               {repairMutation.isError && (
-                <p className="mt-1 text-red-700">
+                <p className="mt-1 text-red-700 dark:text-red-300">
                   {(repairMutation.error as Error).message}
                 </p>
               )}
@@ -361,46 +349,7 @@ export default function SummaryPage() {
         <SummaryViewer data={summaryQuery.data.summary_json} />
       )}
 
-      {hasSummary && (
-        <details className="rounded-lg border border-surface-border bg-surface">
-          <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-ink-muted hover:text-ink">
-            Advanced options
-          </summary>
-          <div className="border-t border-surface-border px-4 py-3 space-y-4">
-            <div>
-              <button
-                type="button"
-                onClick={() => repairMutation.mutate()}
-                disabled={repairMutation.isPending || isWorking}
-                className="rounded-md border border-surface-border px-3 py-1.5 text-sm font-medium hover:bg-surface-muted disabled:opacity-50"
-              >
-                {repairMutation.isPending
-                  ? "Rebuilding spec-check fields…"
-                  : "Rebuild spec-check fields"}
-              </button>
-              <p className="mt-2 text-xs text-ink-muted">
-                Repopulates project identity, dates, and bond fields from existing
-                extraction data. Fast — no AI re-analysis needed.
-              </p>
-            </div>
-            <div>
-              <button
-                type="button"
-                onClick={() => regenerateMutation.mutate()}
-                disabled={isWorking}
-                className="rounded-md border border-surface-border px-3 py-1.5 text-sm font-medium hover:bg-surface-muted disabled:opacity-50"
-              >
-                {regenerateMutation.isPending
-                  ? "Regenerating briefing…"
-                  : "Regenerate briefing"}
-              </button>
-              <p className="mt-2 text-xs text-ink-muted">
-                Re-runs full AI analysis. This can take several minutes.
-              </p>
-            </div>
-          </div>
-        </details>
-      )}
+      {hasSummary && <AdminNotePanel documentId={documentId} />}
 
       {statusQuery.isPending && phase !== "ready" && (
         <p className="sr-only">Loading status…</p>
@@ -428,11 +377,7 @@ export default function SummaryPage() {
 
   return (
     <PdfNavigationProvider>
-      <SplitPanelLayout
-        header={pageHeader}
-        left={briefingPanel}
-        right={previewPanel}
-      />
+      <SplitPanelLayout left={briefingPanel} right={previewPanel} />
     </PdfNavigationProvider>
   );
 }

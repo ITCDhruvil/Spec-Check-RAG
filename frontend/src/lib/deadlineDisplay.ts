@@ -5,6 +5,36 @@ export type DeadlineDisplay = {
   value?: string;
 };
 
+/**
+ * Format an ISO date(-time) as a clean 12-hour display:
+ * "March 11, 2026, 10:00 AM" (date-only values omit the time).
+ * Returns undefined when the input is not a parseable ISO date.
+ */
+export function formatDeadlineDate(iso?: string | null): string | undefined {
+  const raw = (iso ?? "").trim();
+  if (!raw || !/^\d{4}-\d{2}-\d{2}/.test(raw)) return undefined;
+  // Date-only strings parse as UTC midnight and can shift a day in local
+  // time — append a local noon time so the calendar date is stable.
+  const hasTimeComponent = /T\d{2}:\d{2}/.test(raw);
+  const d = new Date(hasTimeComponent ? raw : `${raw.slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return undefined;
+
+  const datePart = d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  // Date-only ISO strings ("2026-03-11") carry no meaningful time.
+  if (!hasTimeComponent) return datePart;
+
+  const timePart = d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return `${datePart}, ${timePart}`;
+}
+
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -65,6 +95,14 @@ export function resolveDeadlineDisplay(input: {
     label ||
     (req.includes(":") ? req.slice(0, req.indexOf(":")).trim() : "") ||
     req;
+
+  // Parsed ISO date wins: clean, consistent 12-hour display.
+  // Raw document phrasing stays available in the citation panel.
+  const formatted =
+    formatDeadlineDate(input.date) ?? formatDeadlineDate(input.date_time);
+  if (formatted && tag) {
+    return { label: tag, value: formatted };
+  }
 
   if (sourceText && tag) {
     const fromSource = extractValueAfterLabel(sourceText, tag);

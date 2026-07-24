@@ -3,7 +3,9 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { SpokesLoader } from "@/components/ui/Spokes";
 import { fetchDocumentFile } from "@/lib/api/documents";
+import { truncateFilename } from "@/lib/truncate";
 import { usePdfNavigation } from "@/lib/pdfNavigationContext";
 
 /** pdfjs-dist requires browser APIs (DOMMatrix); never load during SSR. */
@@ -14,7 +16,7 @@ const PdfJsPreview = dynamic(
     ssr: false,
     loading: () => (
       <div className="flex h-full min-h-0 flex-1 items-center justify-center rounded-md border border-surface-border bg-surface">
-        <p className="text-sm text-ink-muted">Loading PDF preview…</p>
+        <SpokesLoader label="Loading PDF preview…" className="py-0" />
       </div>
     ),
   }
@@ -55,6 +57,7 @@ export function DocumentPreview({
     flashKey,
     registerScrollToCitation,
     unregisterScrollToCitation,
+    collapsePreview,
   } = usePdfNavigation();
   const previewWrapperRef = useRef<HTMLDivElement | null>(null);
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -104,12 +107,11 @@ export function DocumentPreview({
 
   return (
     <div ref={previewContainerRef} className="flex h-full min-h-[320px] flex-col">
-      <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold tracking-tight">Document preview</h3>
-          <p className="mt-0.5 truncate text-xs text-ink-muted">{displayName}</p>
-        </div>
-        <div className="flex items-center gap-3">
+      <div className="mb-2 flex shrink-0 items-center justify-between gap-3">
+        <p className="min-w-0 truncate text-xs font-medium text-ink" title={displayName}>
+          {truncateFilename(displayName, 44)}
+        </p>
+        <div className="flex shrink-0 items-center gap-3">
           {activePage != null && (
             <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent">
               Page {activePage}
@@ -119,19 +121,45 @@ export function DocumentPreview({
             type="button"
             onClick={() => void openInNewTab()}
             disabled={openingInTab}
-            className="shrink-0 text-xs font-medium text-accent hover:text-accent-hover disabled:opacity-50"
+            className="text-xs font-medium text-accent hover:text-accent-hover disabled:opacity-50"
           >
             {openingInTab ? "Opening…" : "Open in new tab"}
           </button>
+          {collapsePreview && (
+            <button
+              type="button"
+              onClick={collapsePreview}
+              className="inline-flex items-center gap-1.5 rounded-md border border-surface-border bg-surface px-2.5 py-1 text-xs font-medium text-ink-muted transition-colors hover:border-accent/40 hover:bg-accent/5 hover:text-accent"
+              aria-expanded
+              aria-controls="document-preview-panel"
+            >
+              <svg
+                className="h-3.5 w-3.5"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                aria-hidden
+              >
+                <path
+                  d="M10 4l4 4-4 4M14 8H2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              Hide
+            </button>
+          )}
         </div>
       </div>
 
       <div className="relative flex min-h-0 flex-1 flex-col">
         {!loaded && (
           <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md border border-surface-border bg-surface">
-            <p className="text-sm text-ink-muted">
-              {isDocxFile ? "Converting document for preview…" : "Loading PDF preview…"}
-            </p>
+            <SpokesLoader
+              label={isDocxFile ? "Converting document for preview…" : "Loading PDF preview…"}
+              className="py-0"
+            />
           </div>
         )}
         <PdfJsPreview

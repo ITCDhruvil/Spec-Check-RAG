@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -10,6 +9,7 @@ import { DocumentPreview } from "@/components/documents/DocumentPreview";
 import { SplitPanelLayout } from "@/components/layout/SplitPanelLayout";
 import { getDocument } from "@/lib/api/documents";
 import { useCachedDocumentMeta } from "@/lib/documentMetaCache";
+import { usePageHeader } from "@/lib/pageHeaderContext";
 import { PdfNavigationProvider } from "@/lib/pdfNavigationContext";
 
 export default function DocumentChatPage() {
@@ -38,28 +38,13 @@ export default function DocumentChatPage() {
   const resolvedMimeType =
     documentQuery.data?.mime_type ?? cachedMeta?.mime_type;
 
-  const pageHeader = (
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <Link
-          href={`/documents/${documentId}/summary`}
-          className="text-xs text-ink-muted hover:text-ink"
-        >
-          ← Specification briefing
-        </Link>
-        <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-          Ask about this tender
-        </h2>
-        <p className="mt-1 text-sm text-ink-muted">{resolvedFilename}</p>
-      </div>
-      <Link
-        href={`/documents/${documentId}/summary`}
-        className="rounded-md border border-surface-border bg-surface px-4 py-2 text-sm font-medium text-ink hover:bg-surface-muted"
-      >
-        View briefing
-      </Link>
-    </div>
-  );
+  // Page header renders in the AppShell top bar (replaces the brand block).
+  usePageHeader({
+    backHref: `/documents/${documentId}/summary`,
+    backLabel: "Specification briefing",
+    title: "Ask about this tender",
+    subtitle: resolvedFilename,
+  });
 
   const chatPanel = (
     <div className="flex h-full min-h-[420px] flex-col">
@@ -84,11 +69,7 @@ export default function DocumentChatPage() {
 
   return (
     <PdfNavigationProvider>
-      <SplitPanelLayout
-        header={pageHeader}
-        left={chatPanel}
-        right={previewPanel}
-      />
+      <SplitPanelLayout left={chatPanel} right={previewPanel} />
     </PdfNavigationProvider>
   );
 }

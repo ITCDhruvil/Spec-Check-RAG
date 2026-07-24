@@ -5,18 +5,21 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Modal } from "@/components/ui/Modal";
+import { Select } from "@/components/ui/Select";
+import { UserActionsMenu } from "@/components/users/UserActionsMenu";
 import {
   createUser,
-  deleteUser,
   generatePassword,
   impersonateUser,
   listUsers,
   updateUser,
 } from "@/lib/api/auth";
+import { SpokesLoader } from "@/components/ui/Spokes";
+import { usePageHeader } from "@/lib/pageHeaderContext";
 import { useAuth } from "@/providers/auth-provider";
 import { patchUserInCache, prependUserInCache } from "@/lib/users-cache";
 import { copyToClipboard } from "@/lib/copyToClipboard";
-import type { CreateUserPayload, ManagedUser } from "@/lib/types/auth";
+import type { CreateUserPayload, ManagedUser, UserRole } from "@/lib/types/auth";
 
 function formatDate(value: string | null) {
   if (!value) return "—";
@@ -238,7 +241,7 @@ function SetPasswordModal({
             onChange={(e) => setPassword(e.target.value)}
             minLength={10}
             placeholder="At least 10 characters"
-            className="flex-1 rounded-lg border border-surface-border px-3 py-2 font-mono text-sm"
+            className="flex-1 rounded-lg border border-surface-border bg-surface px-3 py-2 font-mono text-sm text-ink"
           />
           <button
             type="button"
@@ -250,7 +253,7 @@ function SetPasswordModal({
         </div>
 
         {error && (
-          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
             {error}
           </p>
         )}
@@ -276,12 +279,20 @@ function SetPasswordModal({
   );
 }
 
+// Admin is unique (the configured admin account) — never assignable here.
+const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
+  { value: "user", label: "General User" },
+  { value: "team_leader", label: "Team Leader" },
+  { value: "manager", label: "Manager" },
+];
+
 function CreateUserForm() {
   const queryClient = useQueryClient();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [role, setRole] = useState<UserRole>("user");
   const [password, setPassword] = useState("");
   const [useCustomPassword, setUseCustomPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -294,6 +305,7 @@ function CreateUserForm() {
       setEmail("");
       setFirstName("");
       setLastName("");
+      setRole("user");
       setPassword("");
       setUseCustomPassword(false);
       setError(null);
@@ -320,6 +332,7 @@ function CreateUserForm() {
       email: email.trim(),
       first_name: firstName.trim(),
       last_name: lastName.trim(),
+      role,
     };
 
     if (useCustomPassword && password.trim()) {
@@ -347,7 +360,7 @@ function CreateUserForm() {
             required
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-surface-border px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-ink"
           />
         </div>
         <div>
@@ -357,7 +370,7 @@ function CreateUserForm() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-surface-border px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-ink"
           />
         </div>
         <div>
@@ -365,7 +378,7 @@ function CreateUserForm() {
           <input
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-surface-border px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-ink"
           />
         </div>
         <div>
@@ -373,8 +386,20 @@ function CreateUserForm() {
           <input
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-surface-border px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-ink"
           />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-ink">Role</label>
+          <Select
+            value={role}
+            onChange={setRole}
+            options={ROLE_OPTIONS}
+            className="mt-1 w-full py-2"
+          />
+          <p className="mt-1 text-xs text-ink-muted">
+            Managers & team leaders see all documents and insights; general users see only their own.
+          </p>
         </div>
       </div>
 
@@ -396,7 +421,7 @@ function CreateUserForm() {
               onChange={(e) => setPassword(e.target.value)}
               minLength={10}
               placeholder="At least 10 characters"
-              className="flex-1 rounded-lg border border-surface-border px-3 py-2 font-mono text-sm"
+              className="flex-1 rounded-lg border border-surface-border bg-surface px-3 py-2 font-mono text-sm text-ink"
             />
             <button
               type="button"
@@ -410,7 +435,7 @@ function CreateUserForm() {
       </div>
 
       {error && (
-        <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
           {error}
         </p>
       )}
@@ -440,26 +465,11 @@ function UserRow({
   loginAsBusy: boolean;
 }) {
   const queryClient = useQueryClient();
-  const [busy, setBusy] = useState(false);
 
-  const toggleActive = useMutation({
-    mutationFn: () => updateUser(user.id, { is_active: !user.is_active }),
+  const changeRole = useMutation({
+    mutationFn: (role: UserRole) => updateUser(user.id, { role }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["users"] }),
   });
-
-  const removeUser = useMutation({
-    mutationFn: () => deleteUser(user.id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["users"] }),
-  });
-
-  async function run(action: () => Promise<unknown>) {
-    setBusy(true);
-    try {
-      await action();
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <tr className="border-t border-surface-border">
@@ -477,63 +487,40 @@ function UserRow({
         />
       </td>
       <td className="px-4 py-3 text-sm">
-        <span
-          className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${
-            user.is_active
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border-surface-border bg-surface-muted text-ink-muted"
-          }`}
-        >
-          {user.is_active ? "Active" : "Disabled"}
-        </span>
-        {user.is_admin && (
-          <span className="ml-2 inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-            Admin
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${
+              user.is_active
+                ? "border-green-200 bg-green-100 text-green-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                : "border-surface-border bg-surface-muted text-ink-muted"
+            }`}
+          >
+            {user.is_active ? "Active" : "Disabled"}
           </span>
-        )}
+          {user.is_admin ? (
+            <span className="inline-flex rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
+              Admin
+            </span>
+          ) : (
+            <Select
+              value={user.role ?? "user"}
+              disabled={changeRole.isPending}
+              onChange={(role) => changeRole.mutate(role)}
+              options={ROLE_OPTIONS.filter((r) => r.value !== "admin")}
+              title="Change role"
+            />
+          )}
+        </div>
       </td>
       <td className="px-4 py-3 text-sm text-ink-muted">{formatDate(user.last_login)}</td>
       <td className="px-4 py-3 text-right text-sm">
-        <div className="flex flex-wrap justify-end gap-2">
-          {user.id !== currentUserId && (
-            <button
-              type="button"
-              disabled={busy || !user.is_active || loginAsBusy}
-              onClick={() => onLoginAs(user)}
-              className="rounded-md border border-accent/30 bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-accent hover:bg-blue-100 disabled:opacity-50"
-            >
-              {loginAsBusy ? "Opening…" : "Login as"}
-            </button>
-          )}
-          <button
-            type="button"
-            disabled={busy || user.is_admin}
-            onClick={() => run(() => toggleActive.mutateAsync())}
-            className="rounded-md border border-surface-border px-2.5 py-1.5 text-xs font-medium hover:bg-surface-muted disabled:opacity-50"
-          >
-            {user.is_active ? "Disable" : "Enable"}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onSetPassword(user)}
-            className="rounded-md border border-surface-border px-2.5 py-1.5 text-xs font-medium hover:bg-surface-muted disabled:opacity-50"
-          >
-            Change password
-          </button>
-          <button
-            type="button"
-            disabled={busy || user.is_admin}
-            onClick={() => {
-              if (window.confirm(`Delete user ${user.email}?`)) {
-                run(() => removeUser.mutateAsync());
-              }
-            }}
-            className="rounded-md border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-          >
-            Delete
-          </button>
-        </div>
+        <UserActionsMenu
+          user={user}
+          currentUserId={currentUserId}
+          onLoginAs={onLoginAs}
+          onSetPassword={onSetPassword}
+          loginAsBusy={loginAsBusy}
+        />
       </td>
     </tr>
   );
@@ -549,6 +536,14 @@ export default function UsersPage() {
     queryKey: ["users"],
     queryFn: listUsers,
     enabled: !!user?.is_admin,
+  });
+
+  // Page header renders in the AppShell top bar (replaces the brand block).
+  usePageHeader({
+    backHref: "/",
+    backLabel: "Dashboard",
+    title: "User management",
+    subtitle: "Create and manage platform accounts",
   });
 
   useEffect(() => {
@@ -571,10 +566,10 @@ export default function UsersPage() {
   }
 
   if (loading || !user?.is_admin) {
-    return (
-      <div className="py-12 text-center text-ink-muted">
-        {loading ? "Loading…" : "Redirecting…"}
-      </div>
+    return loading ? (
+      <SpokesLoader className="py-24" />
+    ) : (
+      <div className="py-12 text-center text-ink-muted">Redirecting…</div>
     );
   }
 
@@ -582,13 +577,6 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink">User management</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Create and manage platform accounts. Passwords are shown when created or reset by admin.
-        </p>
-      </div>
-
       <SetPasswordModal
         user={setPasswordUser}
         open={setPasswordUser !== null}
@@ -605,7 +593,7 @@ export default function UsersPage() {
         {usersQuery.isLoading ? (
           <p className="px-4 py-8 text-sm text-ink-muted">Loading users…</p>
         ) : usersQuery.isError ? (
-          <p className="px-4 py-8 text-sm text-red-700">Failed to load users.</p>
+          <p className="px-4 py-8 text-sm text-red-600 dark:text-red-300">Failed to load users.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-left">

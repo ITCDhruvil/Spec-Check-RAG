@@ -32,6 +32,16 @@ export interface SummarySectionBlock {
   _days_offset?: number;
   /** True when project value was absent — UI should show the value input box. */
   _awaiting_project_value?: boolean;
+  /** UI-only placeholder row: canonical date field absent from the document. */
+  _not_found?: boolean;
+  /** Contextual details around a date event (location/online details,
+   * contact person, submission instructions, mandatory-or-not). */
+  _note?: string;
+  /** True when the event is explicitly mandatory; false when explicitly
+   * non-mandatory; absent when the document doesn't say. */
+  _mandatory?: boolean;
+  /** Citation(s) for the Events note (separate from the date's own sources). */
+  _note_sources?: SourceCitation[];
   /** Source field_key when this row is a product alias (e.g. award_date). */
   _alias_of?: string;
   /** absolute | duration | estimated — set by Phase 6 post-rules. */

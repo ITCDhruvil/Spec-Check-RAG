@@ -260,7 +260,9 @@ ASGI_APPLICATION = "config.asgi.application"
 DATABASES = {
     "default": env.db(
         "DATABASE_URL",
-        default="postgres://postgres:postgres@localhost:5432/spec_check_rag",
+        # 127.0.0.1 (not localhost): on Windows, localhost resolves to IPv6
+        # ::1 first; IPv4-only services cost a ~2s fallback timeout per connect.
+        default="postgres://postgres:postgres@127.0.0.1:5432/spec_check_rag",
     )
 }
 
@@ -288,7 +290,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Media / uploads
 MEDIA_URL = "/media/"
-MEDIA_ROOT = Path(env("MEDIA_ROOT", default=str(BASE_DIR / "media")))
+# A relative MEDIA_ROOT (e.g. "./media") is anchored to BASE_DIR, not the
+# process CWD — otherwise any process started elsewhere fails file lookups.
+_media_root = Path(env("MEDIA_ROOT", default=str(BASE_DIR / "media")))
+MEDIA_ROOT = _media_root if _media_root.is_absolute() else (BASE_DIR / _media_root).resolve()
 DOCUMENT_UPLOAD_DIR = MEDIA_ROOT / "documents"
 
 # DOCX → PDF preview (LibreOffice headless or docx2pdf on Windows + Word)
@@ -344,11 +349,14 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": False,
     "AUTH_HEADER_TYPES": ("Bearer",),
+    # Without this, simplejwt never touches auth_user.last_login — the
+    # Users page "Last login" column would stay blank forever.
+    "UPDATE_LAST_LOGIN": True,
 }
 
 # Celery
-CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")
-CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://localhost:6379/1")
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://127.0.0.1:6379/0")
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://127.0.0.1:6379/1")
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"

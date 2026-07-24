@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.authentication.permissions import IsAdminUser
+from apps.authentication.permissions import IsManagementUser
 from apps.core.exceptions import ServiceError, ValidationServiceError
 from apps.documents.services.document_service import DocumentService
 from apps.intelligence.choices import SummaryStatus
@@ -211,6 +211,11 @@ class CancelSummaryView(APIView):
                     message="Cancelled by user.",
                 )
                 ProcessingJobService.mark_failed(job, structured)
+                # Distinct marker consumed by raise_if_cancelled(): the running
+                # pipeline thread stops at its next stage boundary instead of
+                # finishing and overwriting the cancelled state.
+                job.error_code = "cancelled"
+                job.save(update_fields=["error_code", "updated_at"])
             except Exception as exc:
                 logger.warning("cancel_job_mark_failed error=%s", exc)
 
@@ -442,7 +447,7 @@ class FeedbackStatsView(APIView):
     Returns aggregate counts + per-type breakdown + active fine-tune jobs.
     """
 
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsManagementUser]
 
     def get(self, request):
         from django.db.models import Count, Q
@@ -483,6 +488,9 @@ class FeedbackStatsView(APIView):
             if model_id:
                 ft_models[etype] = model_id
 
+        # Learning-loop effectiveness (resolved vs recurring corrections).
+        from apps.intelligence.services.learning_loop_service import learning_effectiveness
+
         return Response({
             "total": total,
             "up": up,
@@ -492,6 +500,7 @@ class FeedbackStatsView(APIView):
             "by_type": by_type,
             "active_jobs": active_jobs,
             "fine_tuned_models": ft_models,
+            "learning": learning_effectiveness(),
             "settings": {
                 "finetune_enabled": _enabled(),
                 "threshold": _threshold(),
@@ -506,7 +515,7 @@ class FeedbackListView(APIView):
     DELETE /api/v1/feedback/:id/  (via FeedbackDetailView)
     """
 
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsManagementUser]
 
     def get(self, request):
         from apps.intelligence.models import FieldFeedback
@@ -564,7 +573,7 @@ class FeedbackListView(APIView):
 class FeedbackDetailView(APIView):
     """DELETE /api/v1/feedback/:id/ — remove a feedback entry."""
 
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsManagementUser]
 
     def delete(self, request, feedback_id):
         from apps.intelligence.models import FieldFeedback
@@ -577,7 +586,7 @@ class FeedbackDetailView(APIView):
 class FineTuneJobListView(APIView):
     """GET /api/v1/finetune/jobs/"""
 
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsManagementUser]
 
     def get(self, request):
         from apps.intelligence.models import FineTuneJob
@@ -596,7 +605,7 @@ class FineTuneJobListView(APIView):
 class FineTuneTriggerView(APIView):
     """POST /api/v1/finetune/trigger/  body: {extraction_type}"""
 
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsManagementUser]
 
     def post(self, request):
         from apps.intelligence.services.finetune_service import trigger
@@ -621,7 +630,7 @@ class AppSettingsView(APIView):
     PATCH /api/v1/feedback/settings/  — update one or many
     """
 
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsManagementUser]
 
     # Allowed keys + their types. Only these are exposed.
     _SCHEMA: dict[str, type] = {
@@ -692,3 +701,204 @@ class AppSettingsView(APIView):
         if errors:
             resp["errors"] = errors
         return Response(resp)
+
+
+class UserInsightsView(APIView):
+    """
+    GET /api/v1/analytics/user-insights/?days=30
+    Per-user processing stats + team accuracy/failure/activity insights.
+    Visible to admin, manager, and team leader.
+    """
+
+    permission_classes = [IsManagementUser]
+
+    def get(self, request):
+        from apps.intelligence.services.user_insights_service import build_user_insights
+
+        try:
+            days = int(request.query_params.get("days", 30))
+        except (TypeError, ValueError):
+            days = 30
+        days = max(0, min(days, 365))
+        return Response(build_user_insights(days=days))
+
+
+class UserInsightDetailView(APIView):
+    """
+    GET /api/v1/analytics/user-insights/<user_id>/?days=30
+    Drill-down for one user: documents, field breakdown, corrections.
+    """
+
+    permission_classes = [IsManagementUser]
+
+    def get(self, request, user_id):
+        from apps.intelligence.services.user_insights_service import build_user_detail
+
+        try:
+            days = int(request.query_params.get("days", 30))
+        except (TypeError, ValueError):
+            days = 30
+        days = max(0, min(days, 365))
+        return Response(build_user_detail(str(user_id), days=days))
+
+
+def _resolve_export_scope(request) -> tuple[int, str | None]:
+    """(days, scope_user_id) with server-side enforcement:
+    general users are always scoped to themselves; management may pass
+    user_id=<id> for one user or omit it for the whole team."""
+    from apps.authentication.permissions import is_management_user
+
+    try:
+        days = int(request.query_params.get("days", 30))
+    except (TypeError, ValueError):
+        days = 30
+    days = max(0, min(days, 365))
+
+    if not is_management_user(request.user):
+        return days, str(request.user.id)
+
+    scope = request.query_params.get("user_id") or None
+    return days, str(scope) if scope else None
+
+
+class AnalyticsExportPreviewView(APIView):
+    """
+    GET /api/v1/analytics/export/preview/?days=30[&user_id=N]
+    JSON version of the export workbook for the in-app preview page.
+    Any authenticated user; general users see only their own data.
+    """
+
+    def get(self, request):
+        from apps.intelligence.services.export_service import build_export_data
+
+        days, scope = _resolve_export_scope(request)
+        return Response(build_export_data(days, scope_user_id=scope))
+
+
+class AnalyticsExportView(APIView):
+    """
+    GET /api/v1/analytics/export/?days=30[&user_id=N]
+    Excel workbook: Summary / Per User / transposed Documents matrix.
+    Any authenticated user; general users see only their own data.
+    """
+
+    def get(self, request):
+        from django.http import HttpResponse
+        from django.utils import timezone
+
+        from apps.intelligence.services.export_service import build_analytics_workbook
+
+        days, scope = _resolve_export_scope(request)
+        content = build_analytics_workbook(days=days, scope_user_id=scope)
+        stamp = timezone.now().strftime("%Y-%m-%d")
+        filename = f"spec-check-analytics-{stamp}.xlsx"
+        response = HttpResponse(
+            content,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+
+class AIInsightsView(APIView):
+    """
+    GET /api/v1/analytics/ai-insights/?days=30
+    LLM-generated analytical insights (root causes, recommendations) over the
+    team's extraction data. Cached per data snapshot.
+    """
+
+    permission_classes = [IsManagementUser]
+
+    def get(self, request):
+        from apps.authentication.permissions import role_of
+        from apps.intelligence.services.user_insights_service import build_ai_insights
+
+        # Feature flag: admin can disable AI insights per role.
+        allowed = FeatureSettingsView()._read().get("ai_insights", [])
+        if role_of(request.user) not in allowed:
+            return Response(
+                {"error": {"code": "feature_disabled", "message": "AI insights are disabled for your role."}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            days = int(request.query_params.get("days", 30))
+        except (TypeError, ValueError):
+            days = 30
+        days = max(0, min(days, 365))
+        refresh = request.query_params.get("refresh") in ("1", "true")
+        return Response(build_ai_insights(days=days, force_refresh=refresh))
+
+
+class FeatureSettingsView(APIView):
+    """
+    GET   /api/v1/settings/features/  -> feature -> allowed roles map
+    PATCH /api/v1/settings/features/  -> update one or many features
+    Admin-only. Roles: admin, manager, team_leader, user.
+    Feature availability is also exposed to every signed-in user via GET
+    (read-only) so the UI can hide disabled features.
+    """
+
+    FEATURES = {
+        # feature key: default allowed roles
+        "ai_insights": ["admin", "manager", "team_leader"],
+        "insights_dashboard": ["admin", "manager", "team_leader"],
+        "export": ["admin", "manager", "team_leader", "user"],
+        "admin_notes": ["admin", "manager", "team_leader", "user"],
+    }
+    VALID_ROLES = {"admin", "manager", "team_leader", "user"}
+
+    def _read(self) -> dict:
+        import json
+
+        from apps.intelligence.models import AppSetting
+
+        result = {}
+        for feature, default in self.FEATURES.items():
+            raw = AppSetting.get(f"feature_{feature}_roles", "")
+            if raw:
+                try:
+                    roles = [r for r in json.loads(raw) if r in self.VALID_ROLES]
+                except (ValueError, TypeError):
+                    roles = default
+            else:
+                roles = default
+            result[feature] = roles
+        return result
+
+    def get(self, request):
+        from apps.authentication.permissions import is_admin_user, role_of
+
+        features = self._read()
+        payload = {
+            "features": features,
+            "defaults": self.FEATURES,
+            "my_features": [
+                f for f, roles in features.items() if role_of(request.user) in roles
+            ],
+            "editable": is_admin_user(request.user),
+        }
+        return Response(payload)
+
+    def patch(self, request):
+        import json
+
+        from apps.authentication.permissions import is_admin_user
+        from apps.intelligence.models import AppSetting
+
+        if not is_admin_user(request.user):
+            return Response(
+                {"error": {"code": "forbidden", "message": "Admin access required."}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        updates = request.data if isinstance(request.data, dict) else {}
+        for feature, roles in updates.items():
+            if feature not in self.FEATURES or not isinstance(roles, list):
+                continue
+            clean = [r for r in roles if r in self.VALID_ROLES]
+            # Admin always keeps every feature.
+            if "admin" not in clean:
+                clean.insert(0, "admin")
+            AppSetting.set(f"feature_{feature}_roles", json.dumps(clean))
+        return Response(self._read())

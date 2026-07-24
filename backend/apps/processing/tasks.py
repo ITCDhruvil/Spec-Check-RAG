@@ -5,7 +5,10 @@ from django.conf import settings
 
 from apps.processing.choices import PipelineStage, ProcessingErrorType
 from apps.processing.errors import StructuredProcessingError
-from apps.processing.services.job_service import ProcessingJobService
+from apps.processing.services.job_service import (
+    ProcessingCancelled,
+    ProcessingJobService,
+)
 from apps.processing.services.pipeline_service import DocumentPipelineService
 
 logger = logging.getLogger("apps.celery")
@@ -29,8 +32,11 @@ def process_document_task(self, job_id: str) -> dict:
 
     try:
         intake_metadata = DocumentPipelineService.run_intake_validation(job)
+        ProcessingJobService.raise_if_cancelled(job)
         parsing_metadata = DocumentPipelineService.run_document_parsing(job)
+        ProcessingJobService.raise_if_cancelled(job)
         indexing_metadata = DocumentPipelineService.run_chunking_and_indexing(job)
+        ProcessingJobService.raise_if_cancelled(job)
 
         combined = {
             "pipeline_version": "3.0.0",
@@ -43,6 +49,11 @@ def process_document_task(self, job_id: str) -> dict:
         )
         logger.info("task_completed job_id=%s", job_id)
         return {"job_id": job_id, "status": PipelineStage.COMPLETED, "metadata": combined}
+
+    except ProcessingCancelled:
+        # Cancel endpoint already wrote the failed/cancelled state — just stop.
+        logger.info("task_cancelled job_id=%s", job_id)
+        return {"job_id": job_id, "status": PipelineStage.FAILED, "cancelled": True}
 
     except Exception as exc:
         logger.exception("task_failed job_id=%s attempt=%s", job_id, self.request.retries)

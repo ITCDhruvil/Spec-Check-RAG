@@ -55,7 +55,8 @@
       "Bash(python manage.py reextract_scope_of_work --all --dry-run --limit 3)",
       "Read(//c/Users/dhruvil.patel/.claude/**)",
       "Bash(curl -s -o /dev/null -w \"backend: %{http_code}\\\\n\" http://localhost:8004/api/health/ --max-time 5)",
-      "Bash(curl -s -o /dev/null -w \"frontend: %{http_code}\\\\n\" http://localhost:3010 --max-time 5)"
+      "Bash(curl -s -o /dev/null -w \"frontend: %{http_code}\\\\n\" http://localhost:3010 --max-time 5)",
+      "Bash(npx skills *)"
     ]
   }
 }

@@ -22,6 +22,25 @@ export interface UploadDocumentParams {
   onProgress?: (percent: number) => void;
 }
 
+export type DuplicateDocumentInfo = {
+  id: string;
+  original_filename: string;
+  tender_title: string | null;
+  status: string;
+  created_at: string;
+};
+
+/** Thrown when the uploaded file's content already exists. */
+export class DuplicateDocumentError extends Error {
+  existing: DuplicateDocumentInfo;
+
+  constructor(existing: DuplicateDocumentInfo) {
+    super("This document has already been uploaded.");
+    this.name = "DuplicateDocumentError";
+    this.existing = existing;
+  }
+}
+
 export async function uploadDocument({
   file,
   tenderReference,
@@ -45,18 +64,29 @@ export async function uploadDocument({
   if (supersedesVersionId) formData.append("supersedes_version_id", supersedesVersionId);
   if (versionNotes) formData.append("version_notes", versionNotes);
 
-  const { data } = await apiClient.post<DocumentUploadResponse>(
-    "/documents/upload/",
-    formData,
-    {
-      headers: { "Content-Type": "multipart/form-data" },
-      onUploadProgress: (event) => {
-        if (!event.total || !onProgress) return;
-        onProgress(Math.round((event.loaded * 100) / event.total));
-      },
+  try {
+    const { data } = await apiClient.post<DocumentUploadResponse>(
+      "/documents/upload/",
+      formData,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+        // No timeout for uploads: large files on slow links legitimately exceed
+        // the global 2-minute default; progress events prove the request is alive.
+        timeout: 0,
+        onUploadProgress: (event) => {
+          if (!event.total || !onProgress) return;
+          onProgress(Math.round((event.loaded * 100) / event.total));
+        },
+      }
+    );
+    return data;
+  } catch (err) {
+    const e = err as Error & { status?: number; data?: { existing_document?: DuplicateDocumentInfo } };
+    if (e.status === 409 && e.data?.existing_document) {
+      throw new DuplicateDocumentError(e.data.existing_document);
     }
-  );
-  return data;
+    throw err;
+  }
 }
 
 export async function listDocuments(
@@ -114,6 +144,31 @@ export async function getDocumentStatus(
 
 export async function deleteDocument(id: string): Promise<void> {
   await apiClient.delete(`/documents/${id}/`);
+}
+
+export type AdminNoteResponse = {
+  note: string;
+  draft?: string;
+  updated_at: string | null;
+  updated_by?: string | null;
+};
+
+export async function getAdminNote(id: string): Promise<AdminNoteResponse> {
+  const { data } = await apiClient.get<AdminNoteResponse>(
+    `/documents/${id}/admin-note/`
+  );
+  return data;
+}
+
+export async function saveAdminNote(
+  id: string,
+  note: string
+): Promise<AdminNoteResponse> {
+  const { data } = await apiClient.put<AdminNoteResponse>(
+    `/documents/${id}/admin-note/`,
+    { note }
+  );
+  return data;
 }
 
 /** Start parse pipeline when upload is stuck in queued (dev / no Celery). */

@@ -57,6 +57,22 @@ class Document(UUIDPrimaryKeyModel, TimeStampedModel):
         blank=True,
         related_name="uploaded_documents",
     )
+    # User has finished pulling data from this document (Manual mode "Done").
+    # Done documents open directly in Manual view from the dashboard.
+    marked_done = models.BooleanField(default=False, db_index=True)
+    marked_done_at = models.DateTimeField(null=True, blank=True)
+
+    # Editable per-document note summarizing extraction results + corrections.
+    # Empty = never saved; the UI offers an auto-generated draft.
+    admin_note = models.TextField(blank=True, default="")
+    admin_note_updated_at = models.DateTimeField(null=True, blank=True)
+    admin_note_updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
 
     class Meta:
         ordering = ["-created_at"]

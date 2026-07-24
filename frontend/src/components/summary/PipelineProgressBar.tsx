@@ -1,5 +1,6 @@
 "use client";
 
+import { CheckIcon } from "@/components/ui/icons";
 import type { PipelineStage } from "@/lib/types/document";
 
 const PIPELINE_STEPS: { id: string; label: string; stages: PipelineStage[] }[] = [
@@ -114,7 +115,7 @@ export function PipelineProgressBar({
                         : "bg-surface-muted text-ink-muted"
                 }`}
               >
-                {isDone ? "✓" : i + 1}
+                {isDone ? <CheckIcon className="h-3.5 w-3.5" /> : i + 1}
               </div>
               <p
                 className={`text-xs ${

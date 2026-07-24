@@ -44,18 +44,44 @@ class DocumentUploadView(APIView):
         if supersedes:
             supersedes = UUID(str(supersedes))
 
-        document = DocumentService.upload(
-            uploaded,
-            uploaded_by=request.user,
-            tender_id=tender_id,
-            tender_reference=request.data.get("tender_reference"),
-            tender_title=request.data.get("tender_title"),
-            organization=request.data.get("organization", ""),
-            version_type=request.data.get("version_type"),
-            version_label=request.data.get("version_label"),
-            supersedes_version_id=supersedes,
-            version_notes=request.data.get("version_notes", ""),
-        )
+        from apps.documents.services.document_service import DuplicateDocumentError
+
+        try:
+            document = DocumentService.upload(
+                uploaded,
+                uploaded_by=request.user,
+                tender_id=tender_id,
+                tender_reference=request.data.get("tender_reference"),
+                tender_title=request.data.get("tender_title"),
+                organization=request.data.get("organization", ""),
+                version_type=request.data.get("version_type"),
+                version_label=request.data.get("version_label"),
+                supersedes_version_id=supersedes,
+                version_notes=request.data.get("version_notes", ""),
+            )
+        except DuplicateDocumentError as exc:
+            existing = exc.existing
+            version = getattr(existing, "version", None)
+            return Response(
+                {
+                    "error": {
+                        "code": "duplicate_document",
+                        "message": "This document has already been uploaded.",
+                    },
+                    "existing_document": {
+                        "id": str(existing.id),
+                        "original_filename": existing.original_filename,
+                        "tender_title": (
+                            version.tender.title
+                            if version and version.tender.title != version.tender.reference_code
+                            else None
+                        ),
+                        "status": existing.status,
+                        "created_at": existing.created_at.isoformat(),
+                    },
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
         serializer = DocumentUploadResponseSerializer(document)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -299,3 +325,139 @@ class TenderDetailView(RetrieveAPIView):
 
     def get_object(self):
         return TenderService.get_tender(self.kwargs["tender_id"], user=self.request.user)
+
+
+class DocumentAdminNoteView(APIView):
+    """
+    GET  /documents/<id>/admin-note/  -> saved note + auto-generated draft
+    PUT  /documents/<id>/admin-note/  -> save the (edited) note
+    """
+
+    def get(self, request, document_id):
+        from apps.documents.services.admin_note_service import generate_admin_note
+
+        document = DocumentService.get_document(document_id, request.user)
+        editor = document.admin_note_updated_by
+        return Response(
+            {
+                "note": document.admin_note,
+                "draft": generate_admin_note(document),
+                "updated_at": (
+                    document.admin_note_updated_at.isoformat()
+                    if document.admin_note_updated_at
+                    else None
+                ),
+                "updated_by": editor.username if editor else None,
+            }
+        )
+
+    def put(self, request, document_id):
+        from django.utils import timezone
+
+        document = DocumentService.get_document(document_id, request.user)
+        note = str(request.data.get("note") or "").strip()
+        document.admin_note = note[:5000]
+        document.admin_note_updated_at = timezone.now()
+        document.admin_note_updated_by = request.user
+        document.save(
+            update_fields=[
+                "admin_note",
+                "admin_note_updated_at",
+                "admin_note_updated_by",
+                "updated_at",
+            ]
+        )
+        return Response(
+            {
+                "note": document.admin_note,
+                "updated_at": document.admin_note_updated_at.isoformat(),
+                "updated_by": request.user.username,
+            }
+        )
+
+
+class DocumentKeywordSearchView(APIView):
+    """
+    GET /documents/<id>/keyword-search/?q=term1,term2
+    Search the parsed page text for keyword occurrences. Returns one match per
+    occurrence with page + the surrounding snippet (used as the highlight
+    source_text so the existing PDF jump/highlight can locate it).
+    """
+
+    def get(self, request, document_id):
+        import re
+
+        document = DocumentService.get_document(document_id, request.user)
+        raw = (request.query_params.get("q") or "").strip()
+        terms = [t.strip() for t in raw.split(",") if t.strip()]
+        if not terms:
+            return Response({"matches": []})
+
+        try:
+            parsed = document.parsed_document
+        except Exception:
+            return Response({"matches": []})
+
+        pages = list(
+            parsed.pages.order_by("page_number").values_list(
+                "page_number", "extracted_text"
+            )
+        )
+        pattern = re.compile(
+            "|".join(re.escape(t) for t in terms), re.IGNORECASE
+        )
+
+        matches = []
+        MAX = 300
+        for page_num, text in pages:
+            text = text or ""
+            for m in pattern.finditer(text):
+                start = max(0, m.start() - 45)
+                end = min(len(text), m.end() + 45)
+                snippet = " ".join(text[start:end].split())
+                # A short verbatim window centered on the match works as the
+                # highlight anchor for the PDF text-layer search.
+                anchor_start = max(0, m.start() - 15)
+                anchor_end = min(len(text), m.end() + 15)
+                anchor = " ".join(text[anchor_start:anchor_end].split())
+                matches.append(
+                    {
+                        "page": page_num,
+                        "term": m.group(0),
+                        "snippet": snippet,
+                        "source_text": anchor,
+                    }
+                )
+                if len(matches) >= MAX:
+                    break
+            if len(matches) >= MAX:
+                break
+
+        return Response({"matches": matches, "count": len(matches)})
+
+
+class DocumentMarkDoneView(APIView):
+    """
+    POST /documents/<id>/mark-done/   body: {"done": true|false}
+    Toggle the "data pulled / done" flag. Done documents open in Manual view.
+    """
+
+    def post(self, request, document_id):
+        from django.utils import timezone
+
+        document = DocumentService.get_document(document_id, request.user)
+        done = request.data.get("done", True) in (True, "true", "1", 1)
+        document.marked_done = done
+        document.marked_done_at = timezone.now() if done else None
+        document.save(update_fields=["marked_done", "marked_done_at", "updated_at"])
+        return Response(
+            {
+                "id": str(document.id),
+                "marked_done": document.marked_done,
+                "marked_done_at": (
+                    document.marked_done_at.isoformat()
+                    if document.marked_done_at
+                    else None
+                ),
+            }
+        )

@@ -43,8 +43,13 @@ GROUP_EXTRACTION_GROUPS: tuple[ExtractionGroup, ...] = (
             "project_sector = Public or Private only when explicit. "
             "project_solicitation_number = each Bid No., RFP No., Project No., etc. (one item per ID). "
             "Never use the project title or the word 'null' as a solicitation number. "
-            "project_document_acquisition_note = how/where to OBTAIN bid documents (portal URL, download site, "
-            "pickup location) — NOT bid submission instructions. "
+            "project_document_acquisition_note = where to OBTAIN/COLLECT the bid documents themselves: "
+            "a procurement portal or e-bidding platform (e.g. BidNet, DemandStar, Bonfire, PlanetBids), "
+            "a download URL for the solicitation, or a physical office/plan room where documents are picked up. "
+            "Priority: (1) named portal/platform, (2) document download URL, (3) pickup office address. "
+            "Do NOT use: the addenda-posting URL, the agency's general homepage, the bid SUBMISSION address, "
+            "or the questions/contact email — none of these are where documents are acquired. "
+            "If the document only names a portal (e.g. 'uploaded to BidNet'), that portal IS the acquisition source. "
             "Omit any field not explicitly stated. Never invent values."
         ),
     ),
@@ -78,7 +83,12 @@ GROUP_EXTRACTION_GROUPS: tuple[ExtractionGroup, ...] = (
         instructions=(
             "Extract project_location (most specific work site address or description) and "
             "project_square_footage when stated. Prefer full street addresses over bare city names. "
-            "One project_location item per distinct work site."
+            "One project_location item per distinct work site. "
+            "project_location must be a PHYSICAL PLACE where work is performed or delivered "
+            "(address, building, city/county) — NEVER a technology platform, system, or "
+            "environment name (e.g. 'Azure environment' is NOT a location). "
+            "If only the issuing agency's city/county is stated (no explicit work site), you may "
+            "return it but set confidence to 0.5 or lower so it is flagged for human review."
         ),
     ),
     ExtractionGroup(
@@ -131,17 +141,12 @@ GROUP_EXTRACTION_GROUPS: tuple[ExtractionGroup, ...] = (
         group_id="set_asides",
         title="Set-aside programs",
         extraction_type=ExtractionType.SET_ASIDES,
-        field_labels=(
-            "set_aside_mbe",
-            "set_aside_wbe",
-            "set_aside_dbe",
-            "set_aside_dvbe",
-            "set_aside_hub",
-            "set_aside_sbe",
-        ),
+        field_labels=("set_aside",),
         instructions=(
-            "Extract set-aside / diversity program goals with specific percentages when stated. "
-            "Labels: set_aside_mbe, set_aside_wbe, set_aside_dbe, set_aside_dvbe, set_aside_hub, set_aside_sbe. "
+            "Extract set-aside / diversity program requirements into the single label set_aside. "
+            "One item per distinct program mentioned (MBE, WBE, DBE, DVBE, HUB, SBE, veteran-owned, etc.), "
+            "value = program name plus its stated goal/percentage exactly as written "
+            "(e.g. 'MBE: 10% participation goal'). "
             "Omit generic equal-opportunity statements without a specific program goal."
         ),
     ),

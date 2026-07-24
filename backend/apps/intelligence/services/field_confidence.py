@@ -170,7 +170,11 @@ def field_key_for_bond_label(display_label: str) -> str | None:
 
 
 def field_key_for_set_aside_label(display_label: str) -> str | None:
-    return SET_ASIDE_FIELD_KEYS.get(display_label)
+    exact = SET_ASIDE_FIELD_KEYS.get(display_label)
+    if exact:
+        return exact
+    # Any set-aside row maps to the single common field.
+    return "set_aside" if display_label.strip() else None
 
 
 def all_registered_field_keys() -> set[str]:

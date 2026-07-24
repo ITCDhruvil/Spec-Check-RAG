@@ -99,6 +99,7 @@ class ExtractionRetrievalServiceTests(SimpleTestCase):
         INTELLIGENCE_HYBRID_RETRIEVAL_ENABLED=True,
         INTELLIGENCE_EXTRACTION_RETRIEVAL_TOP_K=5,
         INTELLIGENCE_EXTRACTION_MIN_RETRIEVAL_SCORE=0.1,
+        INTELLIGENCE_FAST_MODE=False,  # fast mode forces keyword-only (no hybrid)
     )
     @patch("apps.intelligence.services.extraction_retrieval_service.get_vector_store")
     @patch("apps.intelligence.services.extraction_retrieval_service.OpenAIService")

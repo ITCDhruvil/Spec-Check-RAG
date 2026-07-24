@@ -9,6 +9,8 @@ export type ChangePasswordResponse = {
   user: ManagedUser;
 };
 
+export type UserRole = "admin" | "manager" | "team_leader" | "user";
+
 export type AuthUser = {
   id: number;
   username: string;
@@ -19,6 +21,9 @@ export type AuthUser = {
   date_joined: string;
   last_login: string | null;
   is_admin: boolean;
+  /** Admin / manager / team leader — sees all docs, feedback, insights. */
+  is_management: boolean;
+  role: UserRole;
 };
 
 export type LoginResponse = {
@@ -37,6 +42,7 @@ export type CreateUserPayload = {
   first_name?: string;
   last_name?: string;
   password?: string;
+  role?: UserRole;
 };
 
 export type CreateUserResponse = ManagedUser & {
@@ -51,6 +57,7 @@ export type UpdateUserPayload = {
   is_active?: boolean;
   password?: string;
   regenerate_password?: boolean;
+  role?: UserRole;
 };
 
 export type UpdateUserResponse = ManagedUser & {

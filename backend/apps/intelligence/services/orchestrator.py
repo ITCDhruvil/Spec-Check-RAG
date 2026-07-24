@@ -17,7 +17,10 @@ from apps.processing.choices import PipelineStage
 from apps.processing.choices import ProcessingErrorType
 from apps.processing.errors import StructuredProcessingError
 from apps.processing.models import ProcessingJob
-from apps.processing.services.job_service import ProcessingJobService
+from apps.processing.services.job_service import (
+    ProcessingCancelled,
+    ProcessingJobService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -181,16 +184,29 @@ class IntelligenceOrchestrator:
                 VectorIndexService.index_document(document, force=regenerate)
                 ProcessingJobService.complete_stage(job, PipelineStage.EMBEDDING_COMPLETED)
 
+            ProcessingJobService.raise_if_cancelled(job)
             ProcessingJobService.transition_to(job, PipelineStage.EXTRACTION_PROCESSING)
             ExtractedInsight.objects.filter(
                 document=document, generated_summary=summary
             ).delete()
             insights = ExtractionService.run_extractions(document, summary, chunks)
+            ProcessingJobService.raise_if_cancelled(job)
             ProcessingJobService.complete_stage(job, PipelineStage.EXTRACTION_COMPLETED)
 
             ProcessingJobService.transition_to(job, PipelineStage.SUMMARY_PROCESSING)
             summary = SummaryService.generate_final_summary(document, summary, insights)
             ProcessingJobService.complete_stage(job, PipelineStage.SUMMARY_PROCESSING)
+
+            # Learning loop: re-check prior corrections against the new result
+            # so resolved/recurred status proves whether lessons stuck.
+            try:
+                from apps.intelligence.services.learning_loop_service import (
+                    recheck_corrections,
+                )
+
+                recheck_corrections(document.id, summary)
+            except Exception:
+                logger.exception("learning_loop_recheck_failed document_id=%s", document_id)
             ProcessingJobService.mark_pipeline_completed(
                 job,
                 metadata_patch={
@@ -211,6 +227,11 @@ class IntelligenceOrchestrator:
                 "insight_count": len(insights),
                 "total_tokens": total_tokens,
             }
+
+        except ProcessingCancelled:
+            # Cancel endpoint already wrote the final state — do not overwrite.
+            logger.info("intelligence_cancelled document_id=%s", document_id)
+            raise
 
         except Exception as exc:
             logger.exception("intelligence_failed document_id=%s", document_id)

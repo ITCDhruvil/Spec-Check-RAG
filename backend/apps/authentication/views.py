@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import update_last_login
 from django.conf import settings
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -128,6 +129,7 @@ class ImpersonateUserView(APIView):
             )
 
         refresh = RefreshToken.for_user(target)
+        update_last_login(None, target)
         return Response(
             {
                 "access": str(refresh.access_token),
@@ -136,3 +138,58 @@ class ImpersonateUserView(APIView):
             }
         )
 
+
+
+class KeywordFieldsView(APIView):
+    """
+    GET /api/v1/auth/keyword-fields/  -> the user's Manual keyword map
+    PUT /api/v1/auth/keyword-fields/  -> replace it (add/remove keywords)
+    POST .../reset/                   -> restore seeded defaults
+    Empty stored map falls back to the seeded defaults.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def _resolve(self, request) -> list:
+        from apps.authentication.services import get_keyword_fields
+
+        return get_keyword_fields(request.user)
+
+    def get(self, request):
+        return Response({"fields": self._resolve(request)})
+
+    def put(self, request):
+        from apps.authentication.services import set_keyword_fields
+
+        raw = request.data.get("fields")
+        if not isinstance(raw, list):
+            return Response(
+                {"error": {"code": "invalid", "message": "fields must be a list."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        cleaned = []
+        for f in raw:
+            if not isinstance(f, dict):
+                continue
+            fid = str(f.get("id") or "").strip()
+            label = str(f.get("label") or "").strip()
+            kws = [
+                str(k).strip()
+                for k in (f.get("keywords") or [])
+                if str(k).strip()
+            ]
+            if fid and label:
+                cleaned.append({"id": fid, "label": label, "keywords": kws})
+        set_keyword_fields(request.user, cleaned)
+        return Response({"fields": cleaned})
+
+
+class KeywordFieldsResetView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from apps.authentication.services import set_keyword_fields
+        from apps.intelligence.services.keyword_defaults import default_keyword_fields
+
+        set_keyword_fields(request.user, [])
+        return Response({"fields": default_keyword_fields()})

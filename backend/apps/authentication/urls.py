@@ -4,6 +4,8 @@ from apps.authentication.views import (
     ChangePasswordView,
     GeneratePasswordView,
     ImpersonateUserView,
+    KeywordFieldsResetView,
+    KeywordFieldsView,
     LoginView,
     MeView,
     RefreshTokenView,
@@ -20,4 +22,6 @@ urlpatterns = [
     path("auth/login-as/<int:pk>/", ImpersonateUserView.as_view(), name="auth-user-login-as"),
     path("auth/users/", UserListCreateView.as_view(), name="auth-users"),
     path("auth/users/<int:pk>/", UserDetailView.as_view(), name="auth-user-detail"),
+    path("auth/keyword-fields/", KeywordFieldsView.as_view(), name="auth-keyword-fields"),
+    path("auth/keyword-fields/reset/", KeywordFieldsResetView.as_view(), name="auth-keyword-fields-reset"),
 ]

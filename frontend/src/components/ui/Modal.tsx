@@ -8,12 +8,19 @@ export function Modal({
   title,
   description,
   children,
+  blurBackdrop = false,
+  maxWidth = "max-w-sm",
 }: {
   open: boolean;
   onClose: () => void;
-  title: string;
+  /** Omit to render children without the built-in header. */
+  title?: string;
   description?: string;
   children: React.ReactNode;
+  /** Blur the page behind the dialog. */
+  blurBackdrop?: boolean;
+  /** Tailwind max-width class for the dialog. */
+  maxWidth?: string;
 }) {
   const titleId = useId();
 
@@ -37,7 +44,7 @@ export function Modal({
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
       <button
         type="button"
-        className="absolute inset-0 bg-ink/40"
+        className={`absolute inset-0 bg-ink/40 ${blurBackdrop ? "backdrop-blur-sm" : ""}`}
         aria-label="Close dialog"
         onClick={onClose}
       />
@@ -45,16 +52,18 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative z-10 w-full max-w-sm rounded-lg border border-surface-border bg-surface shadow-xl"
+        className={`relative z-10 w-full ${maxWidth} rounded-lg border border-surface-border bg-surface shadow-xl`}
       >
-        <div className="border-b border-surface-border px-4 py-3">
-          <h2 id={titleId} className="text-sm font-semibold text-ink">
-            {title}
-          </h2>
-          {description && (
-            <p className="mt-0.5 truncate text-xs text-ink-muted">{description}</p>
-          )}
-        </div>
+        {title && (
+          <div className="border-b border-surface-border px-4 py-3">
+            <h2 id={titleId} className="text-sm font-semibold text-ink">
+              {title}
+            </h2>
+            {description && (
+              <p className="mt-0.5 truncate text-xs text-ink-muted">{description}</p>
+            )}
+          </div>
+        )}
         <div className="p-2">{children}</div>
       </div>
     </div>

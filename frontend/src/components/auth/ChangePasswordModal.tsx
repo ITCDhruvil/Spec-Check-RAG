@@ -91,7 +91,7 @@ export function ChangePasswordModal({ open, onClose }: ChangePasswordModalProps)
             required
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-surface-border px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-muted/70"
           />
         </div>
 
@@ -107,7 +107,7 @@ export function ChangePasswordModal({ open, onClose }: ChangePasswordModalProps)
             minLength={10}
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-surface-border px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-muted/70"
           />
         </div>
 
@@ -123,18 +123,18 @@ export function ChangePasswordModal({ open, onClose }: ChangePasswordModalProps)
             minLength={10}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-surface-border px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-muted/70"
           />
         </div>
 
         {error && (
-          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-500">
             {error}
           </p>
         )}
 
         {success && (
-          <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-500">
             {success}
           </p>
         )}
